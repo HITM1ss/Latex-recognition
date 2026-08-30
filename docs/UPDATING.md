@@ -49,7 +49,7 @@ npx tauri signer generate -w src-tauri/updater.key -p "你的强密码" --ci
   "platforms": {
     "windows-x86_64": {
       "signature": "粘贴 .sig 文件内容",
-      "url": "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/AxiomLogic-0.1.1-setup.exe"
+      "url": "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/AxiomLogic_0.1.1_x64-setup.exe"
     }
   }
 }

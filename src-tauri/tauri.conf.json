@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Axiom Logic",
+  "productName": "AxiomLogic",
   "version": "0.1.0",
   "identifier": "com.axiomlogic.latex",
   "build": {
@@ -41,11 +41,6 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    },
-    "windows": {
-      "nsis": {
-        "artifactName": "AxiomLogic-${version}-setup.exe"
-      }
     }
   },
   "plugins": {
