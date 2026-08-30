@@ -44,7 +44,7 @@
     },
     "windows": {
       "nsis": {
-        "artifactName": "AxiomLogic-${version}-setup.${ext}"
+        "artifactName": "AxiomLogic-${version}-setup.exe"
       }
     }
   },
