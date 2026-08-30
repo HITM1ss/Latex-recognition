@@ -63,7 +63,11 @@ def _download_model(target: Path) -> None:
         os.environ.pop(key, None)
     try:
         with contextlib.redirect_stdout(sys.stderr):
+            import huggingface_hub.constants as hf_constants  # type: ignore
             from huggingface_hub import snapshot_download  # type: ignore
+        # huggingface_hub 的离线标志在 import 时缓存为模块常量，
+        # 仅 pop 环境变量无效，必须显式覆盖其缓存值。
+        hf_constants.HF_HUB_OFFLINE = False
         snapshot_download(MODEL_REPO, local_dir=str(target))
     finally:
         for key, value in saved.items():
