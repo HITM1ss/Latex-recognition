@@ -3,7 +3,7 @@
 
 The worker deliberately speaks JSONL on stdout: one request per line and one
 response per line.  Logs go to stderr so the Rust side can treat stdout as a
-strict protocol stream.  pix2tex is loaded once and then reused for all
+strict protocol stream.  TexTeller is loaded once and then reused for all
 requests in the process.
 """
 
@@ -44,72 +44,91 @@ def error_response(request_id: int, code: str, message: str) -> dict[str, Any]:
         "latex": None,
         "confidence": None,
         "elapsed_ms": None,
-        "engine": "pix2tex-local",
+        "engine": "texteller-local",
         "error": {"code": code, "message": message},
     }
 
 
-def _model_root() -> Path:
-    configured = os.environ.get("AXIOM_PIX2TEX_MODEL_DIR")
-    if configured:
-        return Path(configured).expanduser().resolve()
+MODEL_REPO = "OleehyO/TexTeller"
 
+
+def _download_model(target: Path) -> None:
+    """从 HuggingFace 官方仓库下载模型权重到 target 目录。
+
+    下载期间临时允许在线（worker 常驻默认离线，见模块头部的离线设置），
+    这样既保证打包后不自动联网，也允许首次运行时拉取官方模型。
+    """
+    saved = {k: os.environ.get(k) for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")}
+    for key in saved:
+        os.environ.pop(key, None)
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            from huggingface_hub import snapshot_download  # type: ignore
+        snapshot_download(MODEL_REPO, local_dir=str(target))
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    if not (target / "config.json").is_file():
+        raise RuntimeError("模型下载完成但缺少 config.json")
+
+
+def _model_root() -> Path:
+    """定位 TexTeller 权重目录；找不到就下载一份（优先下载到显式指定目录）。
+
+    优先级：AXIOM_TEXTELLER_MODEL_DIR（Rust 端会注入用户数据目录）
+    → 随包捆绑 resources/models/texteller。
+    """
+    configured = os.environ.get("AXIOM_TEXTELLER_MODEL_DIR")
     script_dir = Path(__file__).resolve().parent
     bundled_candidates = (
-        script_dir / "models" / "pix2tex" / "model",
-        script_dir / "model",
-        script_dir / "resources" / "models" / "pix2tex" / "model",
+        script_dir / "models" / "texteller",
+        script_dir / "resources" / "models" / "texteller",
     )
-    for bundled in bundled_candidates:
-        if (bundled / "settings" / "config.yaml").is_file():
-            return bundled
 
-    # Development fallback: use the installed pix2tex package.  A packaged
-    # worker should ship the bundled directory above (or set the environment
-    # variable explicitly).
-    with contextlib.redirect_stdout(sys.stderr):
-        import pix2tex  # type: ignore
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser().resolve())
+    candidates.extend(bundled_candidates)
 
-    return Path(pix2tex.__file__).resolve().parent / "model"
+    for candidate in candidates:
+        if (candidate / "config.json").is_file():
+            return candidate
+
+    # 本地没有模型 → 从官方仓库下载到第一个候选目录
+    target = candidates[0] if configured else bundled_candidates[0]
+    target.mkdir(parents=True, exist_ok=True)
+    _download_model(target)
+    return target
+
+
+def _use_onnx() -> bool:
+    value = os.environ.get("AXIOM_TEXTELLER_ONNX", "").strip().lower()
+    return value in ("1", "true", "yes", "onnx")
+
+
+def _num_beams() -> int:
+    try:
+        return max(1, int(os.environ.get("AXIOM_TEXTELLER_BEAMS", "1")))
+    except ValueError:
+        return 1
 
 
 def load_model():
-    """Load pix2tex once, with a compatibility shim for modern timm."""
-    # Importing pix2tex can emit optional dependency messages.  Keep stdout
-    # reserved for JSONL while still surfacing diagnostics in a terminal.
+    """Load TexTeller once (model + tokenizer) and return the inference
+    primitives.  CPU is the target backend for this desktop app."""
     with contextlib.redirect_stdout(sys.stderr):
-        from munch import Munch  # type: ignore
-        from pix2tex.cli import LatexOCR  # type: ignore
+        from texteller import img2latex  # type: ignore
+        from texteller import load_model as _load_model  # type: ignore
+        from texteller import load_tokenizer as _load_tokenizer  # type: ignore
 
     root = _model_root()
-    config = root / "settings" / "config.yaml"
-    checkpoint = root / "checkpoints" / "weights.pth"
-    tokenizer = root / "dataset" / "tokenizer.json"
-    missing = [str(p) for p in (config, checkpoint, tokenizer) if not p.is_file()]
-    if missing:
-        raise RuntimeError("本地 pix2tex 模型文件缺失: " + ", ".join(missing))
-
-    args = Munch(
-        {
-            "config": str(config),
-            "checkpoint": str(checkpoint),
-            "tokenizer": str(tokenizer),
-            "no_cuda": True,
-            # The bundled image-resizer is optional.  Disabling it avoids a
-            # second model and keeps the CPU MVP deterministic.
-            "no_resize": True,
-        }
-    )
+    model_dir = str(root)
     with contextlib.redirect_stdout(sys.stderr):
-        model = LatexOCR(args)
-
-    # pix2tex 0.1.x expects the encoder sequence.  Newer timm releases pool
-    # the sequence in VisionTransformer.forward(), so explicitly use the
-    # feature path.  This keeps the adapter compatible without changing the
-    # user's global Python installation.
-    encoder = getattr(getattr(model, "model", None), "encoder", None)
-    if encoder is not None and hasattr(encoder, "forward_features"):
-        encoder.forward = encoder.forward_features
+        model = _load_model(model_dir=model_dir, use_onnx=_use_onnx())
+        tokenizer = _load_tokenizer(tokenizer_dir=model_dir)
 
     try:
         import torch  # type: ignore
@@ -119,7 +138,7 @@ def load_model():
     except Exception:
         pass
 
-    return model
+    return {"model": model, "tokenizer": tokenizer, "img2latex": img2latex}
 
 
 def _decode_image(request: dict[str, Any]):
@@ -163,7 +182,7 @@ def _decode_image(request: dict[str, Any]):
     return image
 
 
-def recognize(model, request: dict[str, Any]) -> dict[str, Any]:
+def recognize(components: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
     request_id = int(request.get("id", 0))
     started = time.perf_counter()
     try:
@@ -173,21 +192,29 @@ def recognize(model, request: dict[str, Any]) -> dict[str, Any]:
 
     try:
         with contextlib.redirect_stdout(sys.stderr):
-            latex = model(image, resize=False)
-        latex = str(latex or "").strip()
+            import numpy as np  # type: ignore
+
+            latex_list = components["img2latex"](
+                components["model"],
+                components["tokenizer"],
+                [np.asarray(image, dtype=np.uint8)],
+                # device 不传：texteller 默认自动选 CPU/GPU（本应用以 CPU 为目标）
+                num_beams=_num_beams(),
+            )
+        latex = str((latex_list or [""])[0] or "").strip()
         if not latex:
             return error_response(request_id, "no_formula", "模型没有识别出公式")
         return {
             "id": request_id,
             "ok": True,
             "latex": latex,
-            # pix2tex does not expose a calibrated confidence score.
+            # TexTeller 未暴露校准后的置信度分数。
             "confidence": None,
             "elapsed_ms": round((time.perf_counter() - started) * 1000),
-            "engine": "pix2tex-local",
+            "engine": "texteller-local",
             "error": None,
         }
-    except Exception as exc:  # Keep the worker alive for the next request.
+    except Exception as exc:  # 保持 worker 存活以处理下一个请求。
         logging.exception("local recognition failed")
         return error_response(request_id, "inference_failed", str(exc))
 
@@ -195,7 +222,7 @@ def recognize(model, request: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
     try:
-        model = load_model()
+        components = load_model()
     except Exception as exc:
         logging.exception("failed to load local model")
         emit({
@@ -208,8 +235,8 @@ def main() -> int:
     emit({
         "type": "ready",
         "ok": True,
-        "engine": "pix2tex-local",
-        "model": "pix2tex-base",
+        "engine": "texteller-local",
+        "model": "texteller-3.0",
     })
 
     for line in sys.stdin:
@@ -223,7 +250,7 @@ def main() -> int:
                 raise ValueError("请求必须是 JSON 对象")
             if request.get("type") == "shutdown":
                 break
-            emit(recognize(model, request))
+            emit(recognize(components, request))
         except Exception as exc:
             logging.exception("invalid worker request")
             request_id = 0

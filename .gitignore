@@ -10,3 +10,7 @@ __pycache__/
 # Optional generated model copies (keep them out of source control by default)
 # Remove this rule if the release repository intentionally vendors model files.
 src-tauri/resources/models/
+
+# Updater signing keys (never commit the private key)
+src-tauri/updater.key
+src-tauri/updater.key.pub

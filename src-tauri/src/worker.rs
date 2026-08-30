@@ -71,6 +71,8 @@ impl FormulaWorker {
             // The protocol owns stdout; diagnostics belong nowhere in the UI.
             .stderr(Stdio::null());
 
+        inject_model_dir(app, &mut command);
+
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -80,7 +82,7 @@ impl FormulaWorker {
 
         let mut child = command.spawn().map_err(|error| {
       format!(
-        "无法启动本地公式模型 worker（{}）：{}。请确认 Python 3.11 和 pix2tex 已安装，或设置 AXIOM_FORMULA_WORKER_BIN。",
+        "无法启动本地公式模型 worker（{}）：{}。请确认 Python 3.11 和 texteller 已安装，或设置 AXIOM_FORMULA_WORKER_BIN。",
         program, error
       )
     })?;
@@ -102,7 +104,7 @@ impl FormulaWorker {
         if bytes == 0 {
             let _ = child.kill();
             return Err(
-                "本地模型 worker 启动后立即退出，请检查 pix2tex 依赖和模型文件".to_string(),
+                "本地模型 worker 启动后立即退出，请检查 texteller 依赖和模型文件".to_string(),
             );
         }
 
@@ -196,6 +198,69 @@ impl Drop for FormulaWorker {
         let _ = self.stdin.flush();
         let _ = self.child.kill();
     }
+}
+
+/// 未显式设置 `AXIOM_TEXTELLER_MODEL_DIR` 且本地没有捆绑模型时，
+/// 将模型目录指向用户数据目录（首次运行由 worker 自动从 HuggingFace 下载）。
+fn inject_model_dir(app: &AppHandle, command: &mut Command) {
+    if std::env::var("AXIOM_TEXTELLER_MODEL_DIR")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let bundled_exists = worker_script_path(app).map_or(false, |script| {
+        let base = script.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let candidates = [
+            base.join("models").join("texteller").join("config.json"),
+            base.join("resources")
+                .join("models")
+                .join("texteller")
+                .join("config.json"),
+        ];
+        candidates.iter().any(|path| path.is_file())
+    });
+    if bundled_exists {
+        return;
+    }
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let target = data_dir.join("models").join("texteller");
+        if std::fs::create_dir_all(&target).is_ok() {
+            command.env("AXIOM_TEXTELLER_MODEL_DIR", &target);
+        }
+    }
+}
+
+/// 判断 TexTeller 权重是否已本地就绪（显式目录 / 捆绑资源 / 用户数据目录）。
+pub fn texteller_ready(app: &AppHandle) -> bool {
+    let has_config = |dir: std::path::PathBuf| dir.join("config.json").is_file();
+
+    if let Ok(explicit) = env::var("AXIOM_TEXTELLER_MODEL_DIR") {
+        let explicit = explicit.trim();
+        if !explicit.is_empty() && has_config(std::path::PathBuf::from(explicit)) {
+            return true;
+        }
+    }
+
+    let bundled_exists = worker_script_path(app).map_or(false, |script| {
+        let base = script.parent().unwrap_or_else(|| std::path::Path::new(""));
+        [
+            base.join("models").join("texteller"),
+            base.join("resources").join("models").join("texteller"),
+        ]
+        .iter()
+        .any(|dir| has_config(dir.clone()))
+    });
+    if bundled_exists {
+        return true;
+    }
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        return has_config(data_dir.join("models").join("texteller"));
+    }
+    false
 }
 
 fn resolve_worker_command(app: &AppHandle) -> Result<(String, Vec<String>), String> {

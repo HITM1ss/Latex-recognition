@@ -5,6 +5,8 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
 <script id="tailwind-config">
   tailwind.config = {
     darkMode: "class",
@@ -210,12 +212,32 @@
         main {
             scrollbar-gutter: stable;  /* 预留滚动条通道,避免切换页面时内容宽度抖动 */
             overflow-x: hidden;
+            scrollbar-width: none;  /* Firefox: 隐藏纵向滚动条 */
+        }
+        main::-webkit-scrollbar {
+            display: none;  /* WebKit/Chromium: 隐藏纵向滚动条 */
         }
     </style>
 </head>
-<body class="bg-[#F4F5F7] text-on-surface h-full flex overflow-hidden font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
+<body class="bg-[#F4F5F7] text-on-surface h-full flex flex-col overflow-hidden font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
+<!-- Custom Titlebar (full width) -->
+<header id="titlebar" data-tauri-drag-region class="flex items-center justify-between h-10 pl-md pr-0 shrink-0 w-full bg-[#F4F5F7] select-none">
+<div data-tauri-drag-region class="flex items-center gap-2">
+<span class="text-[13px] font-semibold text-on-surface pointer-events-none">Axiom Logic</span>
+</div>
+<div class="flex items-center">
+<button id="tbMinimize" class="flex items-center justify-center w-12 h-10 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" aria-label="最小化" title="最小化">
+<span class="material-symbols-outlined text-[18px]">minimize</span>
+</button>
+<button id="tbClose" class="flex items-center justify-center w-12 h-10 text-on-surface-variant hover:bg-error hover:text-on-error transition-colors" aria-label="关闭" title="关闭">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+</header>
+<!-- App Content Row -->
+<div class="flex flex-1 min-h-0 w-full overflow-hidden">
 <!-- SideNavBar -->
-<nav class="hidden md:flex flex-col h-full w-20 bg-surface-container-lowest shrink-0 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] relative border-r border-outline-variant/30">
+<nav class="hidden md:flex flex-col h-full w-20 bg-[#F4F5F7] shrink-0 z-20 relative">
 <!-- Header -->
 <div class="p-md"><div class="flex items-center gap-sm mb-xs text-primary text-headline-md font-headline-md font-bold"><span class="material-symbols-outlined text-[32px] mx-auto" data-icon="functions">functions</span></div></div>
 <!-- Main Navigation -->
@@ -226,14 +248,14 @@
 <button id="navSettings" class="nav-btn-item cog-btn flex items-center w-full gap-md px-md py-2.5 rounded-lg" onclick="showView('settings')" aria-label="设置"><span class="cog-icon flex items-center justify-center mx-auto text-[28px]"><svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="28" height="28" xmlns="http://www.w3.org/2000/svg"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/></svg></span></button>
 </div>
 <!-- Footer Navigation -->
-<div class="p-sm border-t border-outline-variant/30 mt-auto">
-<button class="flex items-center w-full gap-md px-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors justify-center" onmouseenter="reconstructUpgradeIcon()" aria-label="升级">
+<div class="p-sm mt-auto">
+<button id="navUpgrade" class="flex items-center w-full gap-md px-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors justify-center" onmouseenter="reconstructUpgradeIcon()" aria-label="升级">
 <span id="upgradeIcon" class="flex items-center justify-center text-[28px]"></span>
 </button>
 </div>
 </nav>
 <!-- Main Content Area -->
-<div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+<div class="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-[#F4F5F7]">
 <!-- TopNavBar -->
 <header class="flex justify-between items-center w-full px-lg h-16 bg-transparent z-10 shrink-0 absolute top-0 left-0 right-0 pointer-events-none">
 <div class="md:hidden flex items-center gap-sm text-primary text-headline-md font-headline-md font-bold pointer-events-auto bg-surface-container-lowest p-2 rounded-lg shadow-sm">
@@ -243,7 +265,7 @@
 
 </header>
 <!-- Workspace Layout -->
-<main class="flex-1 flex flex-col overflow-y-auto px-4 md:px-lg lg:px-2xl items-center pt-8 pb-16">
+<main class="flex-1 flex flex-col overflow-y-auto px-4 md:px-lg lg:px-2xl items-center pt-4 pb-8">
 <!-- Workspace View -->
 <div id="workspaceView" class="w-full max-w-[1000px] flex flex-col mt-md gap-md">
 <!-- Drop Zone -->
@@ -338,37 +360,20 @@
 <span class="font-semibold text-[13px] text-on-surface tracking-wide">识别模型</span>
 <span id="modelBadge" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">标准</span>
 </div>
-<div class="flex flex-col divide-y divide-outline-variant/30" role="radiogroup" aria-label="识别模型">
-<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="标准" data-model="standard" role="radio" aria-checked="true">
-<span class="flex items-center gap-3">
-<span class="material-symbols-outlined text-[22px] text-primary/70">bolt</span>
-<span class="flex flex-col gap-1">
-<span class="font-medium text-[14px] text-on-surface">标准识别</span>
-<span class="text-[12px] text-on-surface-variant">默认引擎,速度快,适合印刷体与清晰截图</span>
-</span>
-</span>
-<span class="radio-dot w-5 h-5 rounded-full border-2 border-primary grid place-items-center"><span class="w-2 h-2 rounded-full bg-primary"></span></span>
-</button>
-<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="高精度" data-model="high" role="radio" aria-checked="false">
-<span class="flex items-center gap-3">
-<span class="material-symbols-outlined text-[22px] text-on-surface-variant">auto_awesome</span>
-<span class="flex flex-col gap-1">
-<span class="font-medium text-[14px] text-on-surface">高精度识别</span>
-<span class="text-[12px] text-on-surface-variant">更准确的识别,适合手写公式与复杂矩阵</span>
-</span>
-</span>
-<span class="radio-dot w-5 h-5 rounded-full border-2 border-outline-variant"></span>
-</button>
-<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="快速" data-model="fast" role="radio" aria-checked="false">
-<span class="flex items-center gap-3">
-<span class="material-symbols-outlined text-[22px] text-on-surface-variant">rocket_launch</span>
-<span class="flex flex-col gap-1">
-<span class="font-medium text-[14px] text-on-surface">快速识别</span>
-<span class="text-[12px] text-on-surface-variant">最快响应,优先保证速度,适合批量处理</span>
-</span>
-</span>
-<span class="radio-dot w-5 h-5 rounded-full border-2 border-outline-variant"></span>
-</button>
+<div id="modelList" class="flex flex-col divide-y divide-outline-variant/30" role="radiogroup" aria-label="识别模型"></div>
+</div>
+<!-- 软件更新 -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">软件更新</span>
+<span id="updateVersionBadge" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">检查中…</span>
+</div>
+<div class="px-5 py-4 flex items-center justify-between gap-4">
+<div class="flex flex-col gap-1">
+<span id="updateStatus" class="text-[14px] text-on-surface">正在获取当前版本</span>
+<span class="text-[12px] text-on-surface-variant">新版本从 GitHub Releases 下载并静默安装</span>
+</div>
+<button id="updateButton" class="hidden bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-lg text-[13px] font-medium shrink-0 disabled:opacity-60 disabled:cursor-not-allowed">下载并安装</button>
 </div>
 </div>
 <!-- 占位设置项 2 -->
@@ -407,6 +412,7 @@
 </main>
 <!-- Floating Action Bar (Docked at bottom) -->
 
+</div>
 </div>
 
 <script>
@@ -541,7 +547,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 <div id="appToast" class="fixed left-1/2 bottom-6 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-[#191c1e] text-white text-[13px] shadow-lg opacity-0 pointer-events-none transition-opacity duration-200" role="status" aria-live="polite"></div>
 <script>
 // --- Local Tauri MVP integration -----------------------------------------
-let selectedModel = localStorage.getItem('axiom.model') || 'standard';
+let selectedModel = localStorage.getItem('axiom.model') || 'texteller';
 let currentImageDataUrl = '';
 let currentLatex = '';
 let toastTimer = null;
@@ -584,12 +590,32 @@ function setRecognitionStatus(label, state = 'idle') {
   status.classList.toggle('bg-primary/10', state !== 'error');
 }
 
+function renderPreview(latex) {
+  const preview = document.getElementById('latexPreview');
+  if (!preview) return;
+  const value = latex || '';
+  if (typeof katex === 'undefined' || !value.trim()) {
+    preview.textContent = value.trim() ? value : '等待识别结果';
+    return;
+  }
+  // TexTeller 输出形如 \[ ... \]，去掉首尾包裹后交给 KaTeX 渲染
+  const cleaned = value.trim().replace(/^\\\[/, '').replace(/\\\]$/, '').trim();
+  try {
+    katex.render(cleaned, preview, {
+      displayMode: true,
+      throwOnError: false,
+      output: 'html',
+    });
+  } catch (error) {
+    preview.textContent = value;
+  }
+}
+
 function updateLatex(value) {
   currentLatex = value || '';
   const source = document.getElementById('latexSource');
-  const preview = document.getElementById('latexPreview');
   if (source && source.value !== currentLatex) source.value = currentLatex;
-  if (preview) preview.textContent = currentLatex || '等待识别结果';
+  renderPreview(currentLatex);
 }
 
 function readFileAsDataUrl(file) {
@@ -618,7 +644,7 @@ async function recognizeDataUrl(dataUrl, mime) {
     updateLatex(result.latex || '');
     const elapsed = Number.isFinite(result.elapsed_ms) ? ` · ${result.elapsed_ms} ms` : '';
     setRecognitionStatus('识别完成' + elapsed, 'idle');
-    showToast('已使用 pix2tex 本地模型完成识别');
+    showToast('已使用 TexTeller 本地模型完成识别');
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     setRecognitionStatus('识别失败', 'error');
@@ -712,21 +738,100 @@ function saveHistory() {
   showToast('已保存到本地历史记录');
 }
 
+// --- 动态模型列表：数据来自后端 list_models，未就绪的模型显示下载按钮 ----
+async function renderModels() {
+  const host = document.getElementById('modelList');
+  const badge = document.getElementById('modelBadge');
+  if (!host) return;
+  host.innerHTML = '';
+  let models;
+  try {
+    models = await localInvoke('list_models');
+  } catch (error) {
+    host.innerHTML = '<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">模型列表加载失败</div>';
+    return;
+  }
+  if (!Array.isArray(models) || models.length === 0) {
+    host.innerHTML = '<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">暂无可用模型</div>';
+    return;
+  }
+
+  const saved = localStorage.getItem('axiom.model');
+  if (!saved || !models.some((m) => m.id === saved)) {
+    selectedModel = models[0] ? models[0].id : 'texteller';
+    localStorage.setItem('axiom.model', selectedModel);
+  } else {
+    selectedModel = saved;
+  }
+
+  models.forEach((m) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50';
+    row.dataset.model = m.id;
+    row.dataset.label = m.label;
+    row.setAttribute('role', 'radio');
+    row.setAttribute('aria-checked', m.id === selectedModel ? 'true' : 'false');
+    if (m.id === selectedModel) row.classList.add('active');
+
+    const left = document.createElement('span');
+    left.className = 'flex items-center gap-3';
+    left.innerHTML =
+      '<span class="material-symbols-outlined text-[22px] ' + (m.ready ? 'text-primary/70' : 'text-on-surface-variant') + '">' + m.icon + '</span>' +
+      '<span class="flex flex-col gap-1">' +
+        '<span class="font-medium text-[14px] text-on-surface">' + m.label + '</span>' +
+        '<span class="text-[12px] text-on-surface-variant">' + m.description + '</span>' +
+      '</span>';
+    row.appendChild(left);
+
+    if (m.ready) {
+      const dot = document.createElement('span');
+      dot.className = 'radio-dot w-5 h-5 rounded-full border-2 grid place-items-center ' + (m.id === selectedModel ? 'border-primary' : 'border-outline-variant');
+      if (m.id === selectedModel) {
+        const inner = document.createElement('span');
+        inner.className = 'w-2 h-2 rounded-full bg-primary';
+        dot.appendChild(inner);
+      }
+      row.appendChild(dot);
+      row.addEventListener('click', () => {
+        selectedModel = m.id;
+        localStorage.setItem('axiom.model', selectedModel);
+        activateModel(row);
+      });
+    } else {
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'text-[12px] font-medium text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-full shrink-0';
+      download.textContent = '下载权重';
+      download.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        download.disabled = true;
+        download.textContent = '下载中…';
+        try {
+          await localInvoke('download_model', { id: m.id });
+          showToast('模型权重下载完成', false);
+        } catch (error) {
+          showToast('下载失败：' + ((error && error.message) || String(error)), true);
+        }
+        renderModels();
+      });
+      row.appendChild(download);
+    }
+    host.appendChild(row);
+  });
+
+  if (badge) {
+    const active = models.find((m) => m.id === selectedModel);
+    badge.textContent = active ? active.label : '未选择';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const source = document.getElementById('latexSource');
-  const rows = Array.from(document.querySelectorAll('.model-row'));
 
-  const savedRow = rows.find((row) => row.dataset.model === selectedModel) || rows[0];
-  if (savedRow) {
-    activateModel(savedRow);
-    selectedModel = savedRow.dataset.model || 'standard';
-  }
-  rows.forEach((row) => row.addEventListener('click', () => {
-    selectedModel = row.dataset.model || 'standard';
-    localStorage.setItem('axiom.model', selectedModel);
-  }));
+  renderModels();
 
   if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => fileInput.click());
@@ -763,8 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (source) source.addEventListener('input', () => {
     currentLatex = source.value;
-    const preview = document.getElementById('latexPreview');
-    if (preview) preview.textContent = currentLatex || '等待识别结果';
+    renderPreview(currentLatex);
     setRecognitionStatus('已编辑', 'idle');
   });
   document.getElementById('copyLatexButton')?.addEventListener('click', copyLatex);
@@ -772,6 +876,107 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('exportImageButton')?.addEventListener('click', exportFormulaSvg);
   document.getElementById('saveHistoryButton')?.addEventListener('click', saveHistory);
   document.getElementById('sendWordButton')?.addEventListener('click', copyLatex);
+  document.getElementById('tbMinimize')?.addEventListener('click', () => {
+    const w = window.__TAURI__ && window.__TAURI__.window;
+    if (w) w.getCurrentWindow().minimize();
+  });
+  document.getElementById('tbClose')?.addEventListener('click', () => {
+    const w = window.__TAURI__ && window.__TAURI__.window;
+    if (w) w.getCurrentWindow().close();
+  });
 });
+
+// --- Software Update card ------------------------------------
+(function initUpdateCard() {
+  const badge = document.getElementById('updateVersionBadge');
+  const status = document.getElementById('updateStatus');
+  const button = document.getElementById('updateButton');
+  const navUpgrade = document.getElementById('navUpgrade');
+  const core = (window.__TAURI__ && window.__TAURI__.core) || {};
+  if (!badge || !status || !button || !window.__TAURI__) return;
+  let updateMeta = null;
+
+  (async () => {
+    let current = '?';
+    try {
+      const app = window.__TAURI__.app;
+      if (app && app.getVersion) current = await app.getVersion();
+    } catch (_) {}
+    badge.textContent = '当前版本 v' + current;
+    status.textContent = '点击左侧升级按钮检查更新';
+  })();
+
+  window.checkUpdateFromNav = async function () {
+    badge.textContent = '检查中…';
+    status.textContent = '正在连接更新服务器…';
+    button.classList.add('hidden');
+    try {
+      const meta = await core.invoke('plugin:updater|check');
+      if (!meta || !meta.rid) {
+        badge.textContent = '已是最新版本';
+        status.textContent = '当前没有可用更新';
+        return;
+      }
+      updateMeta = meta;
+      badge.textContent = '发现 v' + meta.version;
+      status.textContent = '发现新版本 v' + meta.version + '，点击右侧按钮下载并安装';
+      button.classList.remove('hidden');
+    } catch (error) {
+      badge.textContent = '检查失败';
+      status.textContent = '检查更新失败：' + ((error && error.message) || String(error));
+    }
+  };
+
+  button.addEventListener('click', async () => {
+    const Channel = core.Channel;
+    if (typeof Channel !== 'function') {
+      status.textContent = '当前运行环境不支持更新通道（需完整 Tauri 环境）';
+      return;
+    }
+    const channel = new Channel();
+    let contentLength = 0;
+    let received = 0;
+    channel.onmessage = (msg) => {
+      if (!msg) return;
+      if (msg.event === 'started' && msg.data) contentLength = msg.data.contentLength || 0;
+      if (msg.event === 'progress' && msg.data) {
+        received += msg.data.chunkLength || 0;
+        if (contentLength > 0) {
+          const pct = Math.min(99, Math.floor((received / contentLength) * 100));
+          button.textContent = pct + '%';
+          status.textContent = '正在下载更新… ' + pct + '%';
+        } else {
+          status.textContent = '正在下载更新…';
+        }
+      }
+      if (msg.event === 'finished') {
+        status.textContent = '下载完成，正在静默安装…';
+        button.textContent = '安装中…';
+      }
+    };
+    button.disabled = true;
+    try {
+      await core.invoke('plugin:updater|download_and_install', {
+        rid: updateMeta.rid,
+        onEvent: channel,
+        restartAfterInstall: true,
+      });
+      status.textContent = '更新已安装，应用即将重启';
+      button.textContent = '完成';
+      button.disabled = false;
+    } catch (error) {
+      status.textContent = '下载/安装失败：' + ((error && error.message) || String(error));
+      button.textContent = '重试';
+      button.disabled = false;
+    }
+  });
+
+  if (navUpgrade) {
+    navUpgrade.addEventListener('click', () => {
+      showView('settings');
+      window.checkUpdateFromNav();
+    });
+  }
+})();
 </script>
 </body></html>

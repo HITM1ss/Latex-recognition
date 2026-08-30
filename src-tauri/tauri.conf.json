@@ -11,10 +11,13 @@
     "windows": [
       {
         "title": "Axiom Logic",
-        "width": 800,
-        "height": 600,
+        "width": 1000,
+        "height": 905,
+        "minWidth": 700,
+        "minHeight": 700,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false
       }
     ],
     "security": {
@@ -24,10 +27,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "resources": [
       "resources/formula_worker.py",
-      "resources/requirements.txt",
-      "resources/models/pix2tex/model"
+      "resources/requirements.txt"
     ],
     "icon": [
       "icons/32x32.png",
@@ -38,6 +41,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/YOUR_OWNER/YOUR_REPO/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUxODM1QUU5RTIzMUJCODUKUldTRnV6SGk2VnFENGNOQVhyOXF1ZEppemRRNVlUMGZjWjJHRmd0UTJRNmxLekdsdW41L0h3c1IK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
