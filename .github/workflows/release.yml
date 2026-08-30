@@ -63,7 +63,13 @@ jobs:
       - name: Locate installer & sign
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe" | Select-Object -First 1
+          Write-Output "==> bundle 目录内容："
+          Get-ChildItem -Recurse "src-tauri\target\release\bundle" -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length | Format-Table -AutoSize
+          $exe = Get-ChildItem -Recurse "src-tauri\target\release\bundle" -Filter *.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'setup' -and $_.Name -notmatch 'uninst' } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "未找到 NSIS 安装包产物（见上方 bundle 目录内容）" }
           Write-Output "EXE=$($exe.FullName)" >> $env:GITHUB_ENV
           npx tauri signer sign -f $exe.FullName
 
