@@ -1,0 +1,7 @@
+# Development/runtime dependencies for the local worker.
+# The current machine already has these installed.  Pinning them here makes
+# a future PyInstaller sidecar reproducible without any runtime downloads.
+pix2tex==0.1.4
+timm==0.9.16
+torch==2.13.0
+torchvision==0.28.0

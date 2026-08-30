@@ -1,0 +1,7 @@
+# Use the sparse rsproxy mirror for reproducible development in mainland China.
+# Remove this file if your environment should use the default crates.io source.
+[source.crates-io]
+replace-with = "rsproxy"
+
+[source.rsproxy]
+registry = "sparse+https://rsproxy.cn/index/"

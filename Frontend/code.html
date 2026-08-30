@@ -1,0 +1,777 @@
+<!DOCTYPE html><html class="h-full" lang="zh" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Axiom Logic - 工作区</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "inverse-on-surface": "#f0f1f3",
+                "on-secondary": "#ffffff",
+                "surface-container-high": "#e7e8ea",
+                "on-secondary-fixed": "#091c35",
+                "on-tertiary-container": "#ffdcdc",
+                "background": "#f8f9fb",
+                "secondary-fixed-dim": "#b7c7e8",
+                "on-background": "#191c1e",
+                "outline": "#6f7a71",
+                "tertiary-fixed-dim": "#ffb3b6",
+                "secondary-fixed": "#d6e3ff",
+                "surface-variant": "#e1e2e4",
+                "on-tertiary-fixed-variant": "#85202f",
+                "secondary": "#4f5f7b",
+                "on-primary-container": "#9ff7c2",
+                "inverse-primary": "#82d8a6",
+                "inverse-surface": "#2e3132",
+                "surface-container-low": "#f3f4f6",
+                "on-surface": "#191c1e",
+                "surface-tint": "#066c43",
+                "surface": "#f8f9fb",
+                "on-primary": "#ffffff",
+                "surface-container": "#edeef0",
+                "on-tertiary-fixed": "#40000c",
+                "secondary-container": "#cdddff",
+                "primary-fixed": "#9ef5c0",
+                "primary": "#16744a", /* Updated primary brand color */
+                "tertiary-fixed": "#ffdada",
+                "on-primary-fixed": "#002111",
+                "on-secondary-fixed-variant": "#374763",
+                "tertiary-container": "#af3f4b",
+                "on-tertiary": "#ffffff",
+                "outline-variant": "#bec9bf",
+                "error": "#ba1a1a",
+                "on-surface-variant": "#3f4942",
+                "primary-fixed-dim": "#82d8a6",
+                "on-secondary-container": "#51617e",
+                "error-container": "#ffdad6",
+                "surface-bright": "#f8f9fb",
+                "on-primary-fixed-variant": "#005231",
+                "surface-container-lowest": "#ffffff",
+                "tertiary": "#8f2735",
+                "surface-dim": "#d9dadc",
+                "on-error-container": "#93000a",
+                "surface-container-highest": "#e1e2e4",
+                "on-error": "#ffffff",
+                "primary-container": "#16744a"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "2xl": "0.75rem",
+                "3xl": "1rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "sidebar-width": "260px",
+                "sm": "8px",
+                "xs": "4px",
+                "md": "16px",
+                "unit": "4px",
+                "gutter": "16px",
+                "xl": "40px",
+                "lg": "24px",
+                "2xl": "64px"
+        },
+        "fontFamily": {
+                "body-md": [
+                        "Inter", "sans-serif"
+                ],
+                "formula-preview": [
+                        "JetBrains Mono", "monospace"
+                ],
+                "display-lg": [
+                        "Inter", "sans-serif"
+                ],
+                "label-caps": [
+                        "Inter", "sans-serif"
+                ],
+                "formula-sm": [
+                        "JetBrains Mono", "monospace"
+                ],
+                "headline-md": [
+                        "Inter", "sans-serif"
+                ]
+        },
+        "fontSize": {
+                "body-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "formula-preview": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "display-lg": [
+                        "30px",
+                        {
+                                "lineHeight": "38px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "700"
+                        }
+                ],
+                "label-caps": [
+                        "12px",
+                        {
+                                "lineHeight": "16px",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "700"
+                        }
+                ],
+                "formula-sm": [
+                        "13px",
+                        {
+                                "lineHeight": "18px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-md": [
+                        "20px",
+                        {
+                                "lineHeight": "28px",
+                                "fontWeight": "600"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .latex-preview {
+            background-image: radial-gradient(#E1E2E4 1px, transparent 0);
+            background-size: 24px 24px;
+        }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .code-theme {
+            background: #ffffff;
+        }
+        
+        .code-keyword { color: #AF00DB; }
+        .code-function { color: #0000FF; }
+        .code-number { color: #098658; }
+        .code-string { color: #A31515; }
+        .code-text { color: #1F1F1F; }
+
+        .nav-btn-item {
+            color: #3f4942;
+            transition: background-color .15s, color .15s;
+        }
+        .nav-btn-item:hover {
+            background: #edeef0;
+            color: #191c1e;
+        }
+        .nav-btn-item.active {
+            background: rgba(22, 116, 74, 0.10);
+            color: #16744a;
+            font-weight: 600;
+        }
+        .model-row.active {
+            background: rgba(22, 116, 74, 0.05);
+        }
+        .cog-icon svg {
+            transition: transform .5s cubic-bezier(.2, 1.2, .3, 1);
+        }
+        .cog-btn:hover .cog-icon svg {
+            transform: rotate(180deg);
+        }
+        @keyframes view-fly-out {
+            from { transform: translateY(0); }
+            to   { transform: translateY(var(--fly-y, -110vh)); }
+        }
+        @keyframes view-fly-in {
+            from { transform: translateY(var(--fly-y, 110vh)); }
+            to   { transform: translateY(0); }
+        }
+        .view-fly-out > * {
+            animation: view-fly-out .24s ease forwards;
+        }
+        .view-fly-in > * {
+            animation: view-fly-in .32s ease backwards;
+        }
+        main {
+            scrollbar-gutter: stable;  /* 预留滚动条通道,避免切换页面时内容宽度抖动 */
+            overflow-x: hidden;
+        }
+    </style>
+</head>
+<body class="bg-[#F4F5F7] text-on-surface h-full flex overflow-hidden font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-full w-20 bg-surface-container-lowest shrink-0 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] relative border-r border-outline-variant/30">
+<!-- Header -->
+<div class="p-md"><div class="flex items-center gap-sm mb-xs text-primary text-headline-md font-headline-md font-bold"><span class="material-symbols-outlined text-[32px] mx-auto" data-icon="functions">functions</span></div></div>
+<!-- Main Navigation -->
+<div class="flex-1 overflow-y-auto py-sm px-sm space-y-1">
+<!-- Active: Workspace -->
+<button id="navWorkspace" class="nav-btn-item flex items-center w-full px-md py-2.5 rounded-lg relative active" onclick="showView('workspace')" aria-label="工作区"><span class="material-symbols-outlined text-[28px] mx-auto" data-icon="edit_square">edit_square</span></button>
+
+<button id="navSettings" class="nav-btn-item cog-btn flex items-center w-full gap-md px-md py-2.5 rounded-lg" onclick="showView('settings')" aria-label="设置"><span class="cog-icon flex items-center justify-center mx-auto text-[28px]"><svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="28" height="28" xmlns="http://www.w3.org/2000/svg"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/></svg></span></button>
+</div>
+<!-- Footer Navigation -->
+<div class="p-sm border-t border-outline-variant/30 mt-auto">
+<button class="flex items-center w-full gap-md px-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors justify-center" onmouseenter="reconstructUpgradeIcon()" aria-label="升级">
+<span id="upgradeIcon" class="flex items-center justify-center text-[28px]"></span>
+</button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-lg h-16 bg-transparent z-10 shrink-0 absolute top-0 left-0 right-0 pointer-events-none">
+<div class="md:hidden flex items-center gap-sm text-primary text-headline-md font-headline-md font-bold pointer-events-auto bg-surface-container-lowest p-2 rounded-lg shadow-sm">
+<span class="material-symbols-outlined">functions</span>
+<span class="">Axiom Logic</span>
+</div>
+
+</header>
+<!-- Workspace Layout -->
+<main class="flex-1 flex flex-col overflow-y-auto px-4 md:px-lg lg:px-2xl items-center pt-8 pb-16">
+<!-- Workspace View -->
+<div id="workspaceView" class="w-full max-w-[1000px] flex flex-col mt-md gap-md">
+<!-- Drop Zone -->
+<div id="dropZone" role="button" tabindex="0" aria-label="选择或拖拽公式图片" class="relative w-full rounded-2xl bg-gradient-to-b from-surface-container-lowest to-surface-container-low border-2 border-dashed border-primary/30 hover:border-primary/60 transition-all duration-300 flex flex-col items-center justify-center cursor-pointer group shadow-sm hover:shadow-md overflow-hidden p-md">
+<!-- Decorative background elements -->
+<div class="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
+<div class="absolute -bottom-24 -left-24 w-48 h-48 bg-secondary/5 rounded-full blur-2xl group-hover:bg-secondary/10 transition-colors"></div>
+<span class="material-symbols-outlined text-[40px] text-primary/60" data-weight="300">add</span>
+<h3 class="relative text-[22px] font-semibold text-on-surface mb-2">粘贴或拖拽图片</h3>
+<p class="relative text-on-surface-variant text-body-md font-body-md text-center max-w-md opacity-80">
+                    支持 PNG、JPG 以及剪贴板粘贴的数学公式、矩阵和内联符号。
+                </p>
+<input id="fileInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/bmp">
+</div>
+<!-- Content Grid -->
+<div class="grid grid-cols-1 w-full gap-md">
+<!-- Original Source -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
+<div class="px-5 h-11 border-b border-outline-variant/30 bg-surface-container-lowest/50 flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">image</span>
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">原始图片</span>
+</div>
+<span id="imageSizeBadge" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">未选择图片</span>
+</div>
+<div class="p-lg flex items-center justify-center bg-[#F8F9FA] min-h-[160px] flex-1">
+<div id="originalPlaceholder" class="text-[13px] text-on-surface-variant/70">尚未选择图片</div>
+<img id="originalImage" alt="原始公式图片" class="hidden max-w-full max-h-[120px] rounded border border-outline-variant/20 shadow-sm transition-transform group-hover:scale-[1.02] duration-300">
+</div>
+</div>
+<!-- Rendered Output -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
+<div class="px-5 h-11 border-b border-outline-variant/30 bg-surface-container-lowest/50 flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary">visibility</span>
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">预览</span>
+</div>
+<button id="copyPreviewButton" class="text-on-surface-variant hover:text-primary hover:bg-primary/10 p-1.5 rounded-md transition-colors" title="复制 LaTeX">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+</button>
+</div>
+<div class="p-lg flex-1 flex items-center justify-center latex-preview min-h-[120px] bg-white">
+<div id="latexPreview" class="text-xl font-formula-preview text-on-surface text-center break-words max-w-full">等待识别结果</div>
+</div>
+</div>
+</div>
+<!-- LaTeX Editor -->
+<div class="w-full bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm flex flex-col flex-1 min-h-[170px] overflow-hidden">
+<div class="px-5 h-11 border-b border-outline-variant/20 bg-surface-container-lowest flex justify-between items-center z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">code</span>
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">LaTeX 源码</span>
+</div>
+<div class="flex gap-2">
+<span id="recognitionStatus" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> 
+                            等待识别
+                        </span>
+</div>
+</div>
+<div class="flex-1 relative code-theme text-[#1F1F1F] overflow-hidden font-formula-sm text-[14px] leading-loose">
+<textarea id="latexSource" class="absolute inset-0 w-full h-full p-lg overflow-y-auto whitespace-pre font-mono bg-transparent border-0 resize-none focus:ring-0 focus:outline-none" spellcheck="false" aria-label="LaTeX 源码"></textarea>
+</div>
+</div>
+<div class="z-30 glass-panel shadow-lg rounded-2xl p-2 flex items-center justify-between w-full border border-outline-variant/30">
+<div class="flex items-center gap-2">
+<button id="copyLatexButton" class="bg-primary hover:bg-primary/90 text-on-primary py-2.5 px-5 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-all duration-200 shadow-sm shadow-primary/20">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+            复制 LaTeX
+        </button>
+</div>
+<div class="flex items-center gap-2">
+<button id="exportImageButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="导出为图片">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">image</span>
+<span class="hidden sm:inline">导出为图片</span>
+</button>
+<button id="sendWordButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="发送至 Word">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">description</span>
+<span class="hidden sm:inline">发送至 Word</span>
+</button>
+<button id="saveHistoryButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="保存至历史记录">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">bookmark_add</span>
+<span class="hidden sm:inline">保存</span>
+</button>
+</div>
+</div></div>
+<!-- Settings View -->
+<div id="settingsView" class="hidden w-full max-w-[1000px] flex flex-col mt-md gap-md">
+<!-- Model Settings -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">识别模型</span>
+<span id="modelBadge" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">标准</span>
+</div>
+<div class="flex flex-col divide-y divide-outline-variant/30" role="radiogroup" aria-label="识别模型">
+<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="标准" data-model="standard" role="radio" aria-checked="true">
+<span class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[22px] text-primary/70">bolt</span>
+<span class="flex flex-col gap-1">
+<span class="font-medium text-[14px] text-on-surface">标准识别</span>
+<span class="text-[12px] text-on-surface-variant">默认引擎,速度快,适合印刷体与清晰截图</span>
+</span>
+</span>
+<span class="radio-dot w-5 h-5 rounded-full border-2 border-primary grid place-items-center"><span class="w-2 h-2 rounded-full bg-primary"></span></span>
+</button>
+<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="高精度" data-model="high" role="radio" aria-checked="false">
+<span class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[22px] text-on-surface-variant">auto_awesome</span>
+<span class="flex flex-col gap-1">
+<span class="font-medium text-[14px] text-on-surface">高精度识别</span>
+<span class="text-[12px] text-on-surface-variant">更准确的识别,适合手写公式与复杂矩阵</span>
+</span>
+</span>
+<span class="radio-dot w-5 h-5 rounded-full border-2 border-outline-variant"></span>
+</button>
+<button class="model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50" data-label="快速" data-model="fast" role="radio" aria-checked="false">
+<span class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[22px] text-on-surface-variant">rocket_launch</span>
+<span class="flex flex-col gap-1">
+<span class="font-medium text-[14px] text-on-surface">快速识别</span>
+<span class="text-[12px] text-on-surface-variant">最快响应,优先保证速度,适合批量处理</span>
+</span>
+</span>
+<span class="radio-dot w-5 h-5 rounded-full border-2 border-outline-variant"></span>
+</button>
+</div>
+</div>
+<!-- 占位设置项 2 -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">设置项</span>
+<span class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">2</span>
+</div>
+<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">内容待定</div>
+</div>
+<!-- 占位设置项 3 -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">设置项</span>
+<span class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">3</span>
+</div>
+<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">内容待定</div>
+</div>
+<!-- 占位设置项 4 -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">设置项</span>
+<span class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">4</span>
+</div>
+<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">内容待定</div>
+</div>
+<!-- 占位设置项 5 -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">设置项</span>
+<span class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">5</span>
+</div>
+<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">内容待定</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Bar (Docked at bottom) -->
+
+</div>
+
+<script>
+const UPGRADE_SVG = '<svg width="28" height="28" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path stroke-dasharray="60" d="M21 12c0 4.97 -4.03 9 -9 9c-4.97 0 -9 -4.03 -9 -9c0 -4.97 4.03 -9 9 -9c4.97 0 9 4.03 9 9Z"><animate fill="freeze" attributeName="stroke-dashoffset" dur="0.4s" values="60;0"/></path><path stroke-dasharray="12" stroke-dashoffset="12" d="M12 17l0 -9.5"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.47s" dur="0.13s" to="0"/></path><path stroke-dasharray="8" stroke-dashoffset="8" d="M12 7l4 4M12 7l-4 4"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.6s" dur="0.13s" to="0"/></path></g></svg>';
+function reconstructUpgradeIcon(){
+  const host = document.getElementById('upgradeIcon');
+  if(!host) return;
+  host.innerHTML = '';
+  requestAnimationFrame(()=>{ host.innerHTML = UPGRADE_SVG; });
+}
+// 页面加载时绘制一次
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('upgradeIcon').innerHTML = UPGRADE_SVG;
+});
+var __switching = false, __pendingView = null;
+function showView(name){
+  const workspaceEl = document.getElementById('workspaceView');
+  const settingsEl = document.getElementById('settingsView');
+  // 动画进行中:只记录最后一次目标,当前切换结束后再执行(避免元素全部消失)
+  if(__switching){
+    __pendingView = name;
+    return;
+  }
+  // 已在目标页
+  if((name === 'workspace' && !workspaceEl.classList.contains('hidden')) ||
+     (name === 'settings' && !settingsEl.classList.contains('hidden'))){
+    navState(name);
+    return;
+  }
+  __switching = true;
+  // 当前/目标
+  const currentEl = name === 'workspace' ? settingsEl : workspaceEl;
+  const targetEl  = name === 'workspace' ? workspaceEl : settingsEl;
+  // 方向:识别页(work)离开时向上(-),设置页离开时向下(+);目标为识别页时从上方进入
+  // 距离用视口高度(110vh),保证元素完全飞出画面后再离开/进入
+  const outY = (currentEl === workspaceEl ? -1 : 1) * 110 + 'vh';
+  const inY  = (targetEl  === workspaceEl ? -1 : 1) * 110 + 'vh';
+
+  // 离开:设置页飞出时底部元素先走(与进入识别页时的落位顺序镜像)
+  currentEl.style.setProperty('--fly-y', outY);
+  currentEl.classList.add('view-fly-out');
+  cascadeDelay(currentEl, currentEl === settingsEl);
+  waitCascadeDone(currentEl, ()=>{
+    clearCascadeDelay(currentEl);
+    currentEl.classList.add('hidden');
+    currentEl.classList.remove('view-fly-out');
+    currentEl.style.removeProperty('--fly-y');
+
+    // 进入:同样级联飞入
+    targetEl.classList.remove('hidden');
+    targetEl.style.setProperty('--fly-y', inY);
+    targetEl.classList.add('view-fly-in');
+    cascadeDelay(targetEl, targetEl === workspaceEl);
+    waitCascadeDone(targetEl, ()=>{
+      clearCascadeDelay(targetEl);
+      targetEl.classList.remove('view-fly-in');
+      targetEl.style.removeProperty('--fly-y');
+      finishSwitch();
+    });
+  });
+
+  navState(name);
+}
+function finishSwitch(){
+  __switching = false;
+  if(__pendingView){
+    const n = __pendingView;
+    __pendingView = null;
+    showView(n);
+  }
+}
+var __flySteps = 0;
+function cascadeDelay(el, reverse){
+  const base = 75;      // 首个间隔 150ms → 缩短 50%
+  const decay = 0.8;    // 之后相邻间隔按 0.8 递减:75 · 60 · 48 · 38 …
+  const kids = Array.from(el.children);
+  if(reverse) kids.reverse(); // 倒序:最下方元素最先
+  kids.forEach((k,i)=>{
+    if(i === 0){ k.style.animationDelay = '0ms'; return; }
+    let d = 0;
+    for(let j = 0; j < i; j++) d += base * Math.pow(decay, j);
+    k.style.animationDelay = d + 'ms';
+  });
+}
+function clearCascadeDelay(el){
+  Array.from(el.children).forEach(k=>{
+    k.style.animationDelay = '';
+    k.style.transform = 'none'; // 显式复位,避免动画残留导致微小位移
+  });
+}
+function waitCascadeDone(el, cb){
+  const kids = Array.from(el.children);
+  if(kids.length === 0){ cb(); return; }
+  __flySteps = kids.length;
+  kids.forEach(k=>{
+    k.addEventListener('animationend', ()=>{
+      __flySteps--;
+      if(__flySteps === 0) cb();
+    }, {once:true});
+  });
+}
+function navState(name){
+  document.getElementById('navWorkspace').classList.toggle('active', name === 'workspace');
+  document.getElementById('navSettings').classList.toggle('active', name === 'settings');
+}
+function activateModel(row){
+  document.querySelectorAll('.model-row').forEach(r=>{
+    const isSel = r === row;
+    r.classList.toggle('active', isSel);
+    r.setAttribute('aria-checked', isSel ? 'true' : 'false');
+    const dot = r.querySelector('.radio-dot');
+    dot.classList.toggle('border-primary', isSel);
+    dot.classList.toggle('border-outline-variant', !isSel);
+    if(isSel){
+      if(!dot.querySelector('span')){
+        const p = document.createElement('span');
+        p.className = 'w-2 h-2 rounded-full bg-primary';
+        dot.appendChild(p);
+      }
+    }else{
+      const n = dot.querySelector('span');
+      if(n) n.remove();
+    }
+  });
+  document.getElementById('modelBadge').textContent = row.dataset.label;
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.querySelectorAll('.model-row').forEach(r=>r.addEventListener('click', ()=>activateModel(r)));
+  activateModel(document.querySelector('.model-row'));
+});
+</script>
+<div id="appToast" class="fixed left-1/2 bottom-6 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-[#191c1e] text-white text-[13px] shadow-lg opacity-0 pointer-events-none transition-opacity duration-200" role="status" aria-live="polite"></div>
+<script>
+// --- Local Tauri MVP integration -----------------------------------------
+let selectedModel = localStorage.getItem('axiom.model') || 'standard';
+let currentImageDataUrl = '';
+let currentLatex = '';
+let toastTimer = null;
+
+function localInvoke(command, args) {
+  const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  if (typeof invoke !== 'function') {
+    return Promise.reject(new Error('请通过 Tauri 应用运行此功能'));
+  }
+  return invoke(command, args);
+}
+
+function showToast(message, isError = false) {
+  const toast = document.getElementById('appToast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.toggle('bg-error', isError);
+  toast.classList.toggle('bg-[#191c1e]', !isError);
+  toast.classList.remove('opacity-0');
+  toast.classList.add('opacity-100');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('opacity-100');
+    toast.classList.add('opacity-0');
+  }, 2600);
+}
+
+function setRecognitionStatus(label, state = 'idle') {
+  const status = document.getElementById('recognitionStatus');
+  if (!status) return;
+  const iconName = state === 'busy' ? 'hourglass_top' : state === 'error' ? 'error' : 'check_circle';
+  status.innerHTML = '';
+  const icon = document.createElement('span');
+  icon.className = 'material-symbols-outlined text-[14px]';
+  icon.textContent = iconName;
+  status.append(icon, document.createTextNode(' ' + label));
+  status.classList.toggle('text-error', state === 'error');
+  status.classList.toggle('bg-error-container', state === 'error');
+  status.classList.toggle('text-primary', state !== 'error');
+  status.classList.toggle('bg-primary/10', state !== 'error');
+}
+
+function updateLatex(value) {
+  currentLatex = value || '';
+  const source = document.getElementById('latexSource');
+  const preview = document.getElementById('latexPreview');
+  if (source && source.value !== currentLatex) source.value = currentLatex;
+  if (preview) preview.textContent = currentLatex || '等待识别结果';
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function recognizeDataUrl(dataUrl, mime) {
+  setRecognitionStatus('正在加载本地模型…', 'busy');
+  try {
+    const result = await localInvoke('recognize_image', {
+      request: {
+        image_base64: dataUrl,
+        mime: mime || null,
+        model: selectedModel,
+      },
+    });
+    if (!result || !result.success) {
+      const message = result && result.error ? result.error.message : '本地模型没有返回结果';
+      throw new Error(message);
+    }
+    updateLatex(result.latex || '');
+    const elapsed = Number.isFinite(result.elapsed_ms) ? ` · ${result.elapsed_ms} ms` : '';
+    setRecognitionStatus('识别完成' + elapsed, 'idle');
+    showToast('已使用 pix2tex 本地模型完成识别');
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    setRecognitionStatus('识别失败', 'error');
+    showToast(message, true);
+  }
+}
+
+async function handleImageFile(file) {
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToast('请选择 PNG、JPG、WebP 或 BMP 图片', true);
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    showToast('图片不能超过 12 MB', true);
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    currentImageDataUrl = dataUrl;
+    const image = document.getElementById('originalImage');
+    const placeholder = document.getElementById('originalPlaceholder');
+    const badge = document.getElementById('imageSizeBadge');
+    if (image) {
+      image.src = dataUrl;
+      image.classList.remove('hidden');
+      image.onload = () => {
+        if (badge) badge.textContent = `${image.naturalWidth} × ${image.naturalHeight} px`;
+      };
+    }
+    if (placeholder) placeholder.classList.add('hidden');
+    await recognizeDataUrl(dataUrl, file.type);
+  } catch (error) {
+    setRecognitionStatus('读取失败', 'error');
+    showToast(error.message || '读取图片失败', true);
+  }
+}
+
+async function copyLatex() {
+  const value = (document.getElementById('latexSource') || {}).value || currentLatex;
+  if (!value.trim()) {
+    showToast('当前没有可复制的 LaTeX', true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (_) {
+    const helper = document.createElement('textarea');
+    helper.value = value;
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand('copy');
+    helper.remove();
+  }
+  showToast('LaTeX 已复制到剪贴板');
+}
+
+function escapeXml(value) {
+  return String(value).replace(/[<>&'"]/g, (char) => ({
+    '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;',
+  }[char]));
+}
+
+function exportFormulaSvg() {
+  const value = (document.getElementById('latexSource') || {}).value || currentLatex;
+  if (!value.trim()) {
+    showToast('请先识别一张公式图片', true);
+    return;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="180" viewBox="0 0 1200 180"><rect width="1200" height="180" fill="white"/><text x="40" y="105" font-family="serif" font-size="32" fill="#191c1e">${escapeXml(value)}</text></svg>`;
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'formula.svg';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('公式已导出为 SVG');
+}
+
+function saveHistory() {
+  const value = (document.getElementById('latexSource') || {}).value || currentLatex;
+  if (!value.trim()) {
+    showToast('请先识别一张公式图片', true);
+    return;
+  }
+  const entries = JSON.parse(localStorage.getItem('axiom.history') || '[]');
+  entries.unshift({ latex: value, createdAt: new Date().toISOString() });
+  localStorage.setItem('axiom.history', JSON.stringify(entries.slice(0, 20)));
+  showToast('已保存到本地历史记录');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const source = document.getElementById('latexSource');
+  const rows = Array.from(document.querySelectorAll('.model-row'));
+
+  const savedRow = rows.find((row) => row.dataset.model === selectedModel) || rows[0];
+  if (savedRow) {
+    activateModel(savedRow);
+    selectedModel = savedRow.dataset.model || 'standard';
+  }
+  rows.forEach((row) => row.addEventListener('click', () => {
+    selectedModel = row.dataset.model || 'standard';
+    localStorage.setItem('axiom.model', selectedModel);
+  }));
+
+  if (dropZone && fileInput) {
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fileInput.click();
+      }
+    });
+    dropZone.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      dropZone.classList.add('border-primary');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
+    dropZone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      dropZone.classList.remove('border-primary');
+      handleImageFile(event.dataTransfer && event.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => {
+      handleImageFile(fileInput.files && fileInput.files[0]);
+      fileInput.value = '';
+    });
+  }
+
+  document.addEventListener('paste', (event) => {
+    const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+    const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    if (imageItem) {
+      event.preventDefault();
+      handleImageFile(imageItem.getAsFile());
+    }
+  });
+
+  if (source) source.addEventListener('input', () => {
+    currentLatex = source.value;
+    const preview = document.getElementById('latexPreview');
+    if (preview) preview.textContent = currentLatex || '等待识别结果';
+    setRecognitionStatus('已编辑', 'idle');
+  });
+  document.getElementById('copyLatexButton')?.addEventListener('click', copyLatex);
+  document.getElementById('copyPreviewButton')?.addEventListener('click', copyLatex);
+  document.getElementById('exportImageButton')?.addEventListener('click', exportFormulaSvg);
+  document.getElementById('saveHistoryButton')?.addEventListener('click', saveHistory);
+  document.getElementById('sendWordButton')?.addEventListener('click', copyLatex);
+});
+</script>
+</body></html>
