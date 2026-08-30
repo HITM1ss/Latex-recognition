@@ -46,7 +46,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/YOUR_OWNER/YOUR_REPO/releases/latest/download/latest.json"
+        "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUxODM1QUU5RTIzMUJCODUKUldTRnV6SGk2VnFENGNOQVhyOXF1ZEppemRRNVlUMGZjWjJHRmd0UTJRNmxLekdsdW41L0h3c1IK",
       "windows": {

@@ -5,8 +5,8 @@
 - Rust 侧：`tauri-plugin-updater`（见 `src-tauri/Cargo.toml`、`src-tauri/src/lib.rs`）
 - 权限：`updater:default`（`src-tauri/capabilities/default.json`）
 - 前端：设置页「软件更新」卡片，检查 → 下载进度 → 静默安装并重启
-- 更新源：`tauri.conf.json` 的 `plugins.updater.endpoints`，默认指向
-  `https://github.com/{owner}/{repo}/releases/latest/download/latest.json`
+- 更新源：`tauri.conf.json` 的 `plugins.updater.endpoints`，指向
+  `https://github.com/HITM1ss/Latex-recognition/releases/latest/download/latest.json`
 
 ## 0. 前置：签名密钥
 
@@ -49,7 +49,7 @@ npx tauri signer generate -w src-tauri/updater.key -p "你的强密码" --ci
   "platforms": {
     "windows-x86_64": {
       "signature": "粘贴 .sig 文件内容",
-      "url": "https://github.com/{owner}/{repo}/releases/latest/download/Axiom-Logic_0.1.1_x64-setup.exe"
+      "url": "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/Axiom-Logic_0.1.1_x64-setup.exe"
     }
   }
 }
