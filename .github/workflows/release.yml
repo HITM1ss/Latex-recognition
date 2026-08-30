@@ -60,25 +60,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --bundles nsis
 
-      - name: Locate installer & sign
+      - name: Locate installer (signed by tauri build automatically)
         shell: pwsh
         run: |
           Write-Output "==> bundle 目录内容："
           Get-ChildItem -Recurse "src-tauri\target\release\bundle" -ErrorAction SilentlyContinue |
             Select-Object FullName, Length | Format-Table -AutoSize
-          $exe = Get-ChildItem -Recurse "src-tauri\target\release\bundle" -Filter *.exe -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match 'setup' -and $_.Name -notmatch 'uninst' } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $exe = Get-ChildItem -LiteralPath "src-tauri\target\release\bundle\nsis" -Filter *setup.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1
           if (-not $exe) { throw "未找到 NSIS 安装包产物（见上方 bundle 目录内容）" }
+          $sig = Join-Path $exe.DirectoryName ($exe.Name + ".sig")
+          if (-not (Test-Path $sig)) {
+            throw "未找到签名文件 $sig（tauri build 已自动签名才会生成；请确认 TAURI_SIGNING_PRIVATE_KEY Secrets 已配置）"
+          }
           Write-Output "EXE=$($exe.FullName)" >> $env:GITHUB_ENV
-          npx tauri signer sign -f $exe.FullName
+          Write-Output "SIG=$sig" >> $env:GITHUB_ENV
 
       - name: Generate latest.json
         shell: pwsh
         run: |
           $version = "$env:VERSION"
           $exeName = Split-Path $env:EXE -Leaf
-          $sig = (Get-Content ($env:EXE + ".sig") -Raw).Trim()
+          $sig = (Get-Content $env:SIG -Raw).Trim()
           $manifest = @{
             version = $version
             notes   = "Axiom Logic $version"
