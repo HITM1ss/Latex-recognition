@@ -41,6 +41,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "nsis": {
+      "artifactName": "AxiomLogic-${version}-setup.${ext}"
     }
   },
   "plugins": {
