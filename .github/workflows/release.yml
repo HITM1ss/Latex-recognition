@@ -81,6 +81,8 @@ jobs:
         run: |
           $version = "$env:VERSION"
           $exeName = Split-Path $env:EXE -Leaf
+          # GitHub releases 下载路径需对文件名里的空格做 percent-encoding
+          $urlName = $exeName.Replace(' ', '%20')
           $sig = (Get-Content $env:SIG -Raw).Trim()
           $manifest = @{
             version = $version
@@ -89,7 +91,7 @@ jobs:
             platforms = @{
               "windows-x86_64" = @{
                 signature = $sig
-                url = "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/$exeName"
+                url = "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/$urlName"
               }
             }
           } | ConvertTo-Json -Depth 6
