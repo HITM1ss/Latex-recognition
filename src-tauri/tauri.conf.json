@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Axiom Logic",
+  "productName": "Axiom_Logic",
   "version": "0.1.0",
   "identifier": "com.axiomlogic.latex",
   "build": {
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Axiom Logic",
+        "title": "Axiom_Logic",
         "width": 1000,
         "height": 905,
         "minWidth": 700,
