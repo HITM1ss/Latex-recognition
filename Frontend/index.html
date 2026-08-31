@@ -217,6 +217,23 @@
         main::-webkit-scrollbar {
             display: none;  /* WebKit/Chromium: 隐藏纵向滚动条 */
         }
+        /* 删除权重按钮 —— Lucide Animated DeleteIcon 的纯 CSS/SVG 转译
+           （弹簧手感用带回弹的 cubic-bezier 近似：盖子-1.1px、盒身与竖线+0.5px） */
+        .remove-weight-btn svg > .del-lid {
+            transition: transform .5s cubic-bezier(.34,1.56,.64,1);
+            transform-origin: 12px 6px;
+        }
+        .remove-weight-btn svg > .del-box,
+        .remove-weight-btn svg > .del-line {
+            transition: transform .5s cubic-bezier(.34,1.56,.64,1);
+        }
+        .remove-weight-btn:hover svg > .del-lid {
+            transform: translateY(-1.1px);
+        }
+        .remove-weight-btn:hover svg > .del-box,
+        .remove-weight-btn:hover svg > .del-line {
+            transform: translateY(.5px);
+        }
     </style>
 </head>
 <body class="bg-[#F4F5F7] text-on-surface h-full flex flex-col overflow-hidden font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
@@ -801,8 +818,19 @@ async function renderModels() {
 
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'text-[12px] font-medium text-on-surface-variant hover:text-error hover:bg-error/10 px-2.5 py-1.5 rounded-full shrink-0';
-      remove.textContent = '删除权重';
+      remove.className = 'remove-weight-btn flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors shrink-0';
+      remove.title = '删除权重';
+      remove.setAttribute('aria-label', '删除权重');
+      remove.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+          <g class="del-lid">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </g>
+          <path class="del-box" d="M19 8v12c0 1-1 2-2 2H7c-1 0-2-1-2-2V8"/>
+          <line class="del-line" x1="10" y1="11" x2="10" y2="17"/>
+          <line class="del-line" x1="14" y1="11" x2="14" y2="17"/>
+        </svg>`;
       remove.addEventListener('click', async (event) => {
         event.stopPropagation();
         if (!window.confirm('确定删除本地模型权重？删除后需要重新下载。')) return;
