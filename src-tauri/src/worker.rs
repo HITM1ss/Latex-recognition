@@ -89,8 +89,9 @@ impl FormulaWorker {
             .args(args.iter())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // The protocol owns stdout; diagnostics belong nowhere in the UI.
-            .stderr(Stdio::null());
+            // The protocol owns stdout; worker diagnostics go to a log file so
+            // that download/inference failures are debuggable after the fact.
+            .stderr(Stdio::piped());
 
         inject_model_dir(app, &mut command);
 
@@ -117,6 +118,35 @@ impl FormulaWorker {
             .take()
             .ok_or_else(|| "本地 worker 未提供 stdout".to_string())?;
         let mut stdout = BufReader::new(stdout);
+
+        // 后台线程把 worker 的 stderr 追加写入应用数据目录 worker.log，
+        // 下载/推理失败时用于排查（stderr 不参与协议流）。
+        if let Some(stderr) = child.stderr.take() {
+            let log_path = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir())
+                .join("worker.log");
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {
+                            let _ = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&log_path)
+                                .map(|mut file| {
+                                    let _ = writeln!(file, "{}", line.trim_end());
+                                });
+                        }
+                    }
+                }
+            });
+        }
 
         let mut line = String::new();
         let ready = loop {

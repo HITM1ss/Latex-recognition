@@ -69,6 +69,7 @@ def _stream_download(target: Path, endpoint: str) -> None:
 
     相比 snapshot_download（无进度回调），这里自己控制下载循环：
     `downloaded / total` 就是整体进度，`speed_bps` 为近 0.5s 的平均速度。
+    每个文件下载完成后会比对期望大小；不匹配视为失败并清理残留。
     """
     with contextlib.redirect_stdout(sys.stderr):
         from huggingface_hub import HfApi  # type: ignore
@@ -110,6 +111,10 @@ def _stream_download(target: Path, endpoint: str) -> None:
                             _emit_progress(downloaded, total, speed, name)
                             last_tick = now
                             last_downloaded = downloaded
+            # 大小校验：镜像返回异常内容（如 HTML 错误页）时拒收。
+            if expected > 0 and target_file.stat().st_size != expected:
+                target_file.unlink(missing_ok=True)
+                raise RuntimeError(f"文件大小不符，已清理：{name}（期望 {expected} 实际 {target_file.stat().st_size if target_file.exists() else 0}）")
     finally:
         session.close()
     _emit_progress(total, total, 0.0, "")
@@ -148,8 +153,20 @@ def _download_model(target: Path) -> None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-    if not (target / "config.json").is_file():
-        raise RuntimeError("模型下载完成但缺少 config.json")
+    has_weight = any(
+        (target / name).is_file() and (target / name).stat().st_size > 0
+        for name in ("model.safetensors", "pytorch_model.bin")
+    )
+    missing = []
+    if not has_weight:
+        missing.append("model.safetensors / pytorch_model.bin")
+    if not ((target / "config.json").is_file() and (target / "config.json").stat().st_size > 0):
+        missing.append("config.json")
+    if missing:
+        raise RuntimeError(
+            "模型下载不完整，缺失文件：" + "、".join(missing)
+            + "。请检查网络后重试（可在设置页再次点击下载权重）。"
+        )
 
 
 def _model_root() -> Path:
