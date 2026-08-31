@@ -798,6 +798,25 @@ async function renderModels() {
         localStorage.setItem('axiom.model', selectedModel);
         activateModel(row);
       });
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'text-[12px] font-medium text-on-surface-variant hover:text-error hover:bg-error/10 px-2.5 py-1.5 rounded-full shrink-0';
+      remove.textContent = '删除权重';
+      remove.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (!window.confirm('确定删除本地模型权重？删除后需要重新下载。')) return;
+        remove.disabled = true;
+        remove.textContent = '删除中…';
+        try {
+          await localInvoke('delete_model', { id: m.id });
+          showToast('模型权重已删除', false);
+        } catch (error) {
+          showToast('删除失败：' + ((error && error.message) || String(error)), true);
+        }
+        renderModels();
+      });
+      row.appendChild(remove);
     } else {
       const download = document.createElement('button');
       download.type = 'button';

@@ -274,7 +274,7 @@ impl Drop for FormulaWorker {
 }
 
 /// 捆绑模型是否存在于 worker 脚本旁（resources/models/texteller 等）。
-fn has_bundled_model(app: &AppHandle) -> bool {
+pub fn has_bundled_model(app: &AppHandle) -> bool {
     worker_script_path(app).map_or(false, |script| {
         let base = script.parent().unwrap_or_else(|| std::path::Path::new(""));
         let configs = [
@@ -293,7 +293,7 @@ fn has_bundled_model(app: &AppHandle) -> bool {
 /// 2. 正式版：安装目录同级 `Axiom_Logic_Model`（如 D:\Program Files\Axiom_Logic_Model）
 ///    —— 与安装目录平级，避免升级覆盖、又常驻在用户可见位置
 /// 3. 开发模式 / 兜底：应用数据目录 models/texteller
-fn model_data_dir(app: &AppHandle) -> Option<PathBuf> {
+pub fn model_data_dir(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(explicit) = env::var("AXIOM_TEXTELLER_MODEL_DIR") {
         let explicit = explicit.trim();
         if !explicit.is_empty() {

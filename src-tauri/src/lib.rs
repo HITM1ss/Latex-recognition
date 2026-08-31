@@ -11,7 +11,8 @@ pub fn run() {
             commands::recognize_image,
             commands::model_status,
             commands::list_models,
-            commands::download_model
+            commands::download_model,
+            commands::delete_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

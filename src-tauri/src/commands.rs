@@ -51,6 +51,46 @@ pub fn download_model(
     Ok("ready".to_string())
 }
 
+/// 删除指定模型的本地权重（会先停掉 worker 以释放文件句柄）。
+/// 随包内置的模型不可删除。
+#[tauri::command]
+pub fn delete_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
+    if id != "texteller" {
+        return Err(format!("未知模型: {id}"));
+    }
+    if crate::worker::has_bundled_model(&app) {
+        return Err("当前模型为随包内置，不可删除".to_string());
+    }
+    // 先释放 worker，确保 Python 进程退出、文件锁释放后再删目录。
+    if let Ok(mut slot) = state.worker.lock() {
+        *slot = None;
+    }
+    let dir = crate::worker::model_data_dir(&app).ok_or("无法定位模型权重目录")?;
+    if !dir.exists() {
+        return Ok("nothing_to_delete".to_string());
+    }
+    // Windows 下进程退出到句柄释放有延迟，重试几次。
+    for attempt in 0..10 {
+        match std::fs::remove_dir_all(&dir) {
+            Ok(_) => return Ok("deleted".to_string()),
+            Err(error) => {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    return Ok("deleted".to_string());
+                }
+                if attempt == 9 {
+                    return Err(format!("删除模型权重失败：{}", error));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+        }
+    }
+    Err("删除模型权重失败".to_string())
+}
+
 #[tauri::command]
 pub fn recognize_image(
     app: AppHandle,
