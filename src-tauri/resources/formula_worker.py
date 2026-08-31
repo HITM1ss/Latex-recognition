@@ -70,11 +70,21 @@ def _stream_download(target: Path, endpoint: str) -> None:
     相比 snapshot_download（无进度回调），这里自己控制下载循环：
     `downloaded / total` 就是整体进度，`speed_bps` 为近 0.5s 的平均速度。
     每个文件下载完成后会比对期望大小；不匹配视为失败并清理残留。
+
+    注意：镜像或回源 CDN（如 us.aws.cdn.hf.co）的证书在部分用户环境
+    （公司代理/证书库缺失）会校验失败，这里公开大文件下载关闭 SSL 校验，
+    完整性由文件大小比对兜底。
     """
+    import warnings
+
     with contextlib.redirect_stdout(sys.stderr):
         from huggingface_hub import HfApi  # type: ignore
 
         import requests  # type: ignore
+        import urllib3  # type: ignore
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    warnings.filterwarnings("ignore", message=".*Unverified HTTPS request.*")
 
     info = HfApi().model_info(MODEL_REPO, files_metadata=True)
     siblings = [
@@ -97,7 +107,7 @@ def _stream_download(target: Path, endpoint: str) -> None:
                 downloaded += expected
                 continue
             url = f"{endpoint}/{MODEL_REPO}/resolve/main/{name}"
-            with session.get(url, stream=True, timeout=(15, 120)) as resp:
+            with session.get(url, stream=True, verify=False, timeout=(15, 120)) as resp:
                 resp.raise_for_status()
                 with open(target_file, "wb") as fh:
                     for chunk in resp.iter_content(chunk_size=1 << 20):
