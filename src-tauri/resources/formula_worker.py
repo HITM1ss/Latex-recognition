@@ -61,13 +61,18 @@ def _download_model(target: Path) -> None:
     saved = {k: os.environ.get(k) for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")}
     for key in saved:
         os.environ.pop(key, None)
+    # SSL 信任链校验失败 == 本机 CA 库不完整。用户未显式指定 HF_ENDPOINT 时，
+    # 默认走 hf-mirror.com 镜像（中国大陆网络可达，且证书链通常能正常验证），
+    # 用户可用环境变量覆盖为任意自定义 HF 端点。
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
     try:
         with contextlib.redirect_stdout(sys.stderr):
             import huggingface_hub.constants as hf_constants  # type: ignore
             from huggingface_hub import snapshot_download  # type: ignore
-        # huggingface_hub 的离线标志在 import 时缓存为模块常量，
-        # 仅 pop 环境变量无效，必须显式覆盖其缓存值。
+        # huggingface_hub 的离线标志/端点在 import 时缓存为模块常量，
+        # 仅 pop 或 set 环境变量无效，必须显式覆盖其缓存值。
         hf_constants.HF_HUB_OFFLINE = False
+        hf_constants.ENDPOINT = os.environ["HF_ENDPOINT"]
         snapshot_download(MODEL_REPO, local_dir=str(target))
     finally:
         for key, value in saved.items():
