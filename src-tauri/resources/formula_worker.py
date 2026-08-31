@@ -26,6 +26,9 @@ os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
+# 用户未指定 HF 端点时默认走镜像。必须在任何 huggingface_hub import 之前生效，
+# 否则 hub 会把官方域名缓存进模块常量（对 hf_api 等模块的本地绑定无效覆盖）。
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_BASE64_CHARS = 16 * 1024 * 1024
@@ -53,6 +56,16 @@ MODEL_REPO = "OleehyO/TexTeller"
 PROGRESS_INTERVAL = 0.5
 
 
+class _Sibling:
+    """模型仓库中的单个文件（名称 + 大小）。"""
+
+    __slots__ = ("rfilename", "size")
+
+    def __init__(self, rfilename: str, size: int) -> None:
+        self.rfilename = rfilename
+        self.size = size
+
+
 def _emit_progress(downloaded: int, total: int, speed_bps: float, filename: str) -> None:
     """通过 stdout 协议上报下载进度，供前端实时显示进度和速度。"""
     emit({
@@ -78,20 +91,43 @@ def _stream_download(target: Path, endpoint: str) -> None:
     import warnings
 
     with contextlib.redirect_stdout(sys.stderr):
-        from huggingface_hub import HfApi  # type: ignore
-
         import requests  # type: ignore
         import urllib3  # type: ignore
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     warnings.filterwarnings("ignore", message=".*Unverified HTTPS request.*")
+    session = requests.Session()
+    try:
+        # 文件清单走 REST API。注意：hf-mirror 的 /api/models 会 302 回源官方
+        # huggingface.co（仅 /resolve 文件下载由镜像缓存），因此全程 verify=False。
+        info_resp = session.get(
+            f"{endpoint}/api/models/{MODEL_REPO}?blobs=true&expand[]=siblings",
+            verify=False,
+            timeout=30,
+        )
+        info_resp.raise_for_status()
+        model_info = info_resp.json()
+        siblings = [
+            _Sibling(s.get("rfilename", ""), int(s.get("size") or 0))
+            for s in (model_info.get("siblings") or [])
+            if s.get("rfilename") and not s.get("rfilename", "").startswith(".")
+        ]
+        if not siblings:
+            raise RuntimeError("无法获取模型文件清单")
+    finally:
+        session.close()
 
-    info = HfApi().model_info(MODEL_REPO, files_metadata=True)
-    siblings = [
-        s for s in (info.siblings or []) if not s.rfilename.startswith(".")
-    ]
-    if not siblings:
-        raise RuntimeError("无法获取模型文件清单")
+    # 只下载加载必需的最小文件集：权重(model.safetensors) + tokenizer + 配置。
+    # 跳过 onnx 变体（use_onnx=False 无需）、pytorch_model.bin（与 safetensors 重复）、README。
+    skip_names = {
+        "README.md", "README_zh.md", ".gitattributes", "pytorch_model.bin",
+        "decoder_model.onnx", "decoder_model_merged.onnx",
+        "decoder_with_past_model.onnx", "encoder_model.onnx",
+    }
+    siblings = sorted(
+        (s for s in siblings if s.rfilename not in skip_names),
+        key=lambda s: (0 if s.rfilename == "model.safetensors" else 1, s.rfilename),
+    )
     total = sum(s.size or 0 for s in siblings) or 1
     downloaded = 0
     session = requests.Session()
@@ -107,26 +143,62 @@ def _stream_download(target: Path, endpoint: str) -> None:
                 downloaded += expected
                 continue
             url = f"{endpoint}/{MODEL_REPO}/resolve/main/{name}"
-            with session.get(url, stream=True, verify=False, timeout=(15, 120)) as resp:
-                resp.raise_for_status()
-                with open(target_file, "wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=1 << 20):
-                        if not chunk:
-                            continue
-                        fh.write(chunk)
-                        downloaded += len(chunk)
-                        now = time.monotonic()
-                        if now - last_tick >= PROGRESS_INTERVAL:
-                            speed = (downloaded - last_downloaded) / max(now - last_tick, 1e-9)
-                            _emit_progress(downloaded, total, speed, name)
-                            last_tick = now
-                            last_downloaded = downloaded
-            # 大小校验：镜像返回异常内容（如 HTML 错误页）时拒收。
-            if expected > 0 and target_file.stat().st_size != expected:
-                target_file.unlink(missing_ok=True)
-                raise RuntimeError(f"文件大小不符，已清理：{name}（期望 {expected} 实际 {target_file.stat().st_size if target_file.exists() else 0}）")
+
+            # 断点续传 + 重试：网络中断（IncompleteRead 等）后从已下载处继续，
+            # 避免 1GB+ 文件每次都从头重下。
+            ok = False
+            for attempt in range(3):
+                try:
+                    resume_at = target_file.stat().st_size if target_file.is_file() else 0
+                    headers = {"Range": f"bytes={resume_at}-"} if resume_at else {}
+                    with session.get(
+                        url, stream=True, verify=False, headers=headers, timeout=(15, 180)
+                    ) as resp:
+                        if resume_at and resp.status_code in (200, 206):
+                            if resp.status_code == 200:
+                                # 服务端不支持 Range：从头下载，回退已累计的字节数
+                                downloaded -= resume_at
+                                resume_at = 0
+                        elif not resume_at and resp.status_code == 206:
+                            # 分块下载首个 206 属正常（服务器默认分块），无需处理
+                            pass
+                        resp.raise_for_status()
+                        with open(target_file, "ab" if resume_at else "wb") as fh:
+                            for chunk in resp.iter_content(chunk_size=1 << 20):
+                                if not chunk:
+                                    continue
+                                fh.write(chunk)
+                                downloaded += len(chunk)
+                                now = time.monotonic()
+                                if now - last_tick >= PROGRESS_INTERVAL:
+                                    speed = (downloaded - last_downloaded) / max(now - last_tick, 1e-9)
+                                    _emit_progress(downloaded, total, speed, name)
+                                    last_tick = now
+                                    last_downloaded = downloaded
+                    # 大小校验：镜像返回异常内容（如 HTML 错误页）时拒收。
+                    if expected == 0 or target_file.stat().st_size == expected:
+                        ok = True
+                        break
+                    raise RuntimeError(
+                        f"文件大小不符（期望 {expected} 实际 {target_file.stat().st_size}）"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    if attempt == 2:
+                        target_file.unlink(missing_ok=True)
+                        raise RuntimeError(f"下载 {name} 失败：{exc}") from exc
+                    _emit_progress(downloaded, total, 0.0, name)
+                    time.sleep(1 + attempt)
+            if not ok:
+                raise RuntimeError(f"下载 {name} 失败")
     finally:
         session.close()
+    # 清理目录中不需要的残留（onnx/pytorch_model.bin/README），释放磁盘与避免干扰。
+    for leftover in list(target.iterdir()):
+        try:
+            if leftover.is_file() and leftover.name in skip_names:
+                leftover.unlink()
+        except OSError:
+            pass
     _emit_progress(total, total, 0.0, "")
 
 
@@ -152,11 +224,9 @@ def _download_model(target: Path) -> None:
         hf_constants.ENDPOINT = os.environ["HF_ENDPOINT"]
         try:
             _stream_download(target, hf_constants.ENDPOINT.rstrip("/"))
-        except Exception:
-            logging.exception("流式下载失败，回退 snapshot_download")
-            with contextlib.redirect_stdout(sys.stderr):
-                from huggingface_hub import snapshot_download  # type: ignore
-            snapshot_download(MODEL_REPO, local_dir=str(target))
+        except Exception as exc:
+            logging.exception("模型下载失败")
+            raise RuntimeError(f"模型权重下载失败：{exc}") from exc
     finally:
         for key, value in saved.items():
             if value is None:
@@ -192,17 +262,21 @@ def _model_root() -> Path:
         script_dir / "resources" / "models" / "texteller",
     )
 
-    candidates: list[Path] = []
+    # 显式指定的目录具有最高优先级：有模型直接用，没有就下载到它
+    # （不回落捆绑，保证「下载权重」按钮的动作落点与判定一致）。
     if configured:
-        candidates.append(Path(configured).expanduser().resolve())
-    candidates.extend(bundled_candidates)
+        target = Path(configured).expanduser().resolve()
+        if not (target / "config.json").is_file():
+            target.mkdir(parents=True, exist_ok=True)
+            _download_model(target)
+        return target
 
-    for candidate in candidates:
+    for candidate in bundled_candidates:
         if (candidate / "config.json").is_file():
             return candidate
 
-    # 本地没有模型 → 从官方仓库下载到第一个候选目录
-    target = candidates[0] if configured else bundled_candidates[0]
+    # 无显式目录且无捆绑 → 从官方仓库下载到第一个捆绑候选目录
+    target = bundled_candidates[0]
     target.mkdir(parents=True, exist_ok=True)
     _download_model(target)
     return target
