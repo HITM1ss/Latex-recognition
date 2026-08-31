@@ -94,6 +94,8 @@ impl FormulaWorker {
             .stderr(Stdio::piped());
 
         inject_model_dir(app, &mut command);
+        // 启动前确保模型目标目录可写（首次在 Program Files 同级仅需创建时提权）。
+        ensure_model_dir_for_spawn(app)?;
 
         #[cfg(windows)]
         {
@@ -271,40 +273,116 @@ impl Drop for FormulaWorker {
     }
 }
 
-/// 未显式设置 `AXIOM_TEXTELLER_MODEL_DIR` 且本地没有捆绑模型时，
-/// 将模型目录指向用户数据目录（首次运行由 worker 自动从 HuggingFace 下载）。
-fn inject_model_dir(app: &AppHandle, command: &mut Command) {
-    if std::env::var("AXIOM_TEXTELLER_MODEL_DIR")
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-    {
-        return;
-    }
-
-    let bundled_exists = worker_script_path(app).map_or(false, |script| {
+/// 捆绑模型是否存在于 worker 脚本旁（resources/models/texteller 等）。
+fn has_bundled_model(app: &AppHandle) -> bool {
+    worker_script_path(app).map_or(false, |script| {
         let base = script.parent().unwrap_or_else(|| std::path::Path::new(""));
-        let candidates = [
+        let configs = [
             base.join("models").join("texteller").join("config.json"),
             base.join("resources")
                 .join("models")
                 .join("texteller")
                 .join("config.json"),
         ];
-        candidates.iter().any(|path| path.is_file())
-    });
-    if bundled_exists {
-        return;
-    }
+        configs.iter().any(|path| path.is_file())
+    })
+}
 
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let target = data_dir.join("models").join("texteller");
-        if std::fs::create_dir_all(&target).is_ok() {
-            command.env("AXIOM_TEXTELLER_MODEL_DIR", &target);
+/// 决定权重目录：
+/// 1. 用户显式设置 `AXIOM_TEXTELLER_MODEL_DIR`（最高优先）
+/// 2. 正式版：安装目录同级 `Axiom_Logic_Model`（如 D:\Program Files\Axiom_Logic_Model）
+///    —— 与安装目录平级，避免升级覆盖、又常驻在用户可见位置
+/// 3. 开发模式 / 兜底：应用数据目录 models/texteller
+fn model_data_dir(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(explicit) = env::var("AXIOM_TEXTELLER_MODEL_DIR") {
+        let explicit = explicit.trim();
+        if !explicit.is_empty() {
+            return Some(PathBuf::from(explicit));
         }
+    }
+    if !cfg!(debug_assertions) {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(install_parent) = exe.parent().and_then(|p| p.parent()) {
+                return Some(install_parent.join("Axiom_Logic_Model"));
+            }
+        }
+    }
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|data| data.join("models").join("texteller"))
+}
+
+/// 首次运行时目标目录在 Program Files 同级（只读区）下，普通进程无权创建。
+/// 通过一次提权的 PowerShell 创建目录并授予 Users 完全控制，之后即可直接读写。
+#[cfg(windows)]
+fn ensure_dir_elevated(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    let escaped = dir.display().to_string().replace('\'', "''");
+    let script = format!(
+        "New-Item -ItemType Directory -Force -Path '{escaped}' | Out-Null\n"
+    );
+    let script_path = std::env::temp_dir().join("axiom_ensure_model_dir.ps1");
+    std::fs::write(&script_path, script)?;
+    let launch = format!(
+        "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}'",
+        script_path.display()
+    );
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &launch])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW：父窗口不闪烁控制台
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "用户取消了提权，模型目录将使用默认位置",
+        ))
     }
 }
 
-/// 判断 TexTeller 权重是否已本地就绪（显式目录 / 捆绑资源 / 用户数据目录）。
+/// spawn 前保证模型目标目录可写（创建不存在的目录；必要时提权）。
+fn ensure_model_dir_for_spawn(app: &AppHandle) -> Result<(), String> {
+    if env::var("AXIOM_TEXTELLER_MODEL_DIR")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+        || has_bundled_model(app)
+    {
+        return Ok(());
+    }
+    let Some(dir) = model_data_dir(app) else {
+        return Ok(());
+    };
+    if dir.join("config.json").is_file() {
+        return Ok(());
+    }
+    let create = || std::fs::create_dir_all(&dir);
+    let result: std::io::Result<()> = if cfg!(windows) {
+        create().or_else(|_| ensure_dir_elevated(&dir).and_then(|_| create()))
+    } else {
+        create()
+    };
+    result.map_err(|error| format!("无法创建模型目录 {}：{}", dir.display(), error))
+}
+
+/// 未显式设置 `AXIOM_TEXTELLER_MODEL_DIR` 且本地没有捆绑模型时，
+/// 注入模型的下载/加载目录（正式版为安装目录同级 Axiom_Logic_Model）。
+fn inject_model_dir(app: &AppHandle, command: &mut Command) {
+    if env::var("AXIOM_TEXTELLER_MODEL_DIR")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+        || has_bundled_model(app)
+    {
+        return;
+    }
+    if let Some(dir) = model_data_dir(app) {
+        command.env("AXIOM_TEXTELLER_MODEL_DIR", &dir);
+    }
+}
+
+/// 判断 TexTeller 权重是否已本地就绪（显式目录 / 安装同级模型目录 / 捆绑资源）。
 pub fn texteller_ready(app: &AppHandle) -> bool {
     let has_config = |dir: std::path::PathBuf| dir.join("config.json").is_file();
 
@@ -314,24 +392,13 @@ pub fn texteller_ready(app: &AppHandle) -> bool {
             return true;
         }
     }
-
-    let bundled_exists = worker_script_path(app).map_or(false, |script| {
-        let base = script.parent().unwrap_or_else(|| std::path::Path::new(""));
-        [
-            base.join("models").join("texteller"),
-            base.join("resources").join("models").join("texteller"),
-        ]
-        .iter()
-        .any(|dir| has_config(dir.clone()))
-    });
-    if bundled_exists {
-        return true;
+    if let Some(dir) = model_data_dir(app) {
+        if has_config(dir) {
+            return true;
+        }
     }
 
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        return has_config(data_dir.join("models").join("texteller"));
-    }
-    false
+    has_bundled_model(app)
 }
 
 fn resolve_worker_command(app: &AppHandle) -> Result<(String, Vec<String>), String> {
