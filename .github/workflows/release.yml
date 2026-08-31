@@ -73,16 +73,20 @@ jobs:
           if (-not (Test-Path $sig)) {
             throw "未找到签名文件 $sig（tauri build 已自动签名才会生成；请确认 TAURI_SIGNING_PRIVATE_KEY Secrets 已配置）"
           }
-          Write-Output "EXE=$($exe.FullName)" >> $env:GITHUB_ENV
+          # GitHub 上传 release 资产时不保留文件名中的空格（自动替换为 '.'），
+          # 因此先把安装包复制成无空格文件名再上传，latest.json 的 url 才能与资产名精确一致。
+          $uploadName = $exe.Name -replace ' ', '.'
+          $uploadExe = Join-Path $exe.DirectoryName $uploadName
+          if ($uploadExe -ne $exe.FullName) { Copy-Item -LiteralPath $exe.FullName -Destination $uploadExe }
+          Write-Output "EXE=$uploadExe" >> $env:GITHUB_ENV
           Write-Output "SIG=$sig" >> $env:GITHUB_ENV
 
       - name: Generate latest.json
         shell: pwsh
         run: |
           $version = "$env:VERSION"
+          # EXE 已是无空格的上传文件名，url 可与 GitHub 资产名精确一致（无需编码）
           $exeName = Split-Path $env:EXE -Leaf
-          # GitHub releases 下载路径需对文件名里的空格做 percent-encoding
-          $urlName = $exeName.Replace(' ', '%20')
           $sig = (Get-Content $env:SIG -Raw).Trim()
           $manifest = @{
             version = $version
@@ -91,7 +95,7 @@ jobs:
             platforms = @{
               "windows-x86_64" = @{
                 signature = $sig
-                url = "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/$urlName"
+                url = "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/$exeName"
               }
             }
           } | ConvertTo-Json -Depth 6
