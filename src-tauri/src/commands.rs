@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::state::AppState;
-use crate::worker::{RecognizeRequest, RecognizeResponse};
+use crate::worker::{DownloadProgress, RecognizeRequest, RecognizeResponse};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,12 +26,13 @@ pub fn list_models(app: AppHandle) -> Vec<ModelInfo> {
     }]
 }
 
-/// 下载指定模型的权重（worker 启动时会自动完成下载并阻塞到就绪）。
+/// 下载指定模型的权重（worker 启动时边下载边把进度推送到前端 onEvent 通道）。
 #[tauri::command]
 pub fn download_model(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
+    on_event: tauri::ipc::Channel<DownloadProgress>,
 ) -> Result<String, String> {
     if id != "texteller" {
         return Err(format!("未知模型: {id}"));
@@ -45,7 +46,7 @@ pub fn download_model(
         None => true,
     };
     if should_spawn {
-        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app)?);
+        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, Some(on_event))?);
     }
     Ok("ready".to_string())
 }
@@ -66,7 +67,7 @@ pub fn recognize_image(
         None => true,
     };
     if should_spawn {
-        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app)?);
+        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, None)?);
     }
 
     worker_slot

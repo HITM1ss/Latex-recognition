@@ -52,6 +52,24 @@ struct WorkerMessage {
     engine: Option<String>,
     #[serde(default)]
     error: Option<WorkerError>,
+    // 下载进度字段（worker 启动阶段流式下载权重时上报）
+    #[serde(default)]
+    downloaded: Option<u64>,
+    #[serde(default)]
+    total: Option<u64>,
+    #[serde(default)]
+    speed_bps: Option<f64>,
+    #[serde(default)]
+    filename: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub total: u64,
+    pub downloaded: u64,
+    pub speed_bps: f64,
+    pub filename: String,
 }
 
 pub struct FormulaWorker {
@@ -61,7 +79,10 @@ pub struct FormulaWorker {
 }
 
 impl FormulaWorker {
-    pub fn spawn(app: &AppHandle) -> Result<Self, String> {
+    pub fn spawn(
+        app: &AppHandle,
+        progress: Option<tauri::ipc::Channel<DownloadProgress>>,
+    ) -> Result<Self, String> {
         let (program, args) = resolve_worker_command(app)?;
         let mut command = Command::new(&program);
         command
@@ -98,28 +119,48 @@ impl FormulaWorker {
         let mut stdout = BufReader::new(stdout);
 
         let mut line = String::new();
-        let bytes = stdout
-            .read_line(&mut line)
-            .map_err(|error| format!("读取本地模型启动状态失败：{}", error))?;
-        if bytes == 0 {
-            let _ = child.kill();
-            return Err(
-                "本地模型 worker 启动后立即退出，请检查 texteller 依赖和模型文件".to_string(),
-            );
-        }
+        let ready = loop {
+            line.clear();
+            let bytes = stdout
+                .read_line(&mut line)
+                .map_err(|error| format!("读取本地模型启动状态失败：{}", error))?;
+            if bytes == 0 {
+                let _ = child.kill();
+                return Err(format!(
+                    "本地模型 worker 启动后立即退出，请检查 texteller 依赖和模型文件"
+                ));
+            }
 
-        let ready: WorkerMessage = serde_json::from_str(line.trim()).map_err(|error| {
-            let _ = child.kill();
-            format!("本地模型 worker 返回了无效启动消息：{}", error)
-        })?;
-        if ready.kind.as_deref() != Some("ready") || ready.ok != Some(true) {
-            let message = ready
+            let message: WorkerMessage = serde_json::from_str(line.trim()).map_err(|error| {
+                let _ = child.kill();
+                format!("本地模型 worker 返回了无效启动消息：{}", error)
+            })?;
+
+            // worker 启动阶段可能边下载权重边打进度，转发给前端实时显示。
+            if message.kind.as_deref() == Some("download_progress") {
+                if let Some(channel) = &progress {
+                    let _ = channel.send(DownloadProgress {
+                        total: message.total.unwrap_or(0),
+                        downloaded: message.downloaded.unwrap_or(0),
+                        speed_bps: message.speed_bps.unwrap_or(0.0),
+                        filename: message.filename.unwrap_or_default(),
+                    });
+                }
+                continue;
+            }
+
+            if message.kind.as_deref() == Some("ready") && message.ok == Some(true) {
+                break message;
+            }
+            let message_text = message
                 .error
-                .map(|error| error.message)
+                .as_ref()
+                .map(|error| error.message.clone())
                 .unwrap_or_else(|| "本地模型未准备就绪".to_string());
             let _ = child.kill();
-            return Err(message);
-        }
+            return Err(message_text);
+        };
+        let _ = ready;
 
         Ok(Self {
             child,

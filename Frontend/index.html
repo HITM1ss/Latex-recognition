@@ -807,8 +807,30 @@ async function renderModels() {
         event.stopPropagation();
         download.disabled = true;
         download.textContent = '下载中…';
+        const core = (window.__TAURI__ && window.__TAURI__.core) || {};
+        const Channel = core.Channel;
+        const onEvent = typeof Channel === 'function'
+          ? (() => {
+              const channel = new Channel();
+              channel.onmessage = (msg) => {
+                if (!msg) return;
+                const total = msg.total || 0;
+                const got = msg.downloaded || 0;
+                if (total > 0) {
+                  const pct = Math.min(100, Math.floor((got / total) * 100));
+                  const speed = msg.speed_bps > 0
+                    ? (msg.speed_bps / 1048576).toFixed(1) + ' MB/s'
+                    : '';
+                  download.textContent = speed
+                    ? pct + '% · ' + speed
+                    : pct + '%';
+                }
+              };
+              return channel;
+            })()
+          : undefined;
         try {
-          await localInvoke('download_model', { id: m.id });
+          await localInvoke('download_model', { id: m.id, onEvent });
           showToast('模型权重下载完成', false);
         } catch (error) {
           showToast('下载失败：' + ((error && error.message) || String(error)), true);

@@ -50,10 +50,73 @@ def error_response(request_id: int, code: str, message: str) -> dict[str, Any]:
 
 
 MODEL_REPO = "OleehyO/TexTeller"
+PROGRESS_INTERVAL = 0.5
+
+
+def _emit_progress(downloaded: int, total: int, speed_bps: float, filename: str) -> None:
+    """通过 stdout 协议上报下载进度，供前端实时显示进度和速度。"""
+    emit({
+        "type": "download_progress",
+        "downloaded": downloaded,
+        "total": total,
+        "speed_bps": round(speed_bps),
+        "filename": filename,
+    })
+
+
+def _stream_download(target: Path, endpoint: str) -> None:
+    """逐个文件流式下载 repo 到 target，过程中实时上报进度。
+
+    相比 snapshot_download（无进度回调），这里自己控制下载循环：
+    `downloaded / total` 就是整体进度，`speed_bps` 为近 0.5s 的平均速度。
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        from huggingface_hub import HfApi  # type: ignore
+
+        import requests  # type: ignore
+
+    info = HfApi().model_info(MODEL_REPO, files_metadata=True)
+    siblings = [
+        s for s in (info.siblings or []) if not s.rfilename.startswith(".")
+    ]
+    if not siblings:
+        raise RuntimeError("无法获取模型文件清单")
+    total = sum(s.size or 0 for s in siblings) or 1
+    downloaded = 0
+    session = requests.Session()
+    last_tick = time.monotonic()
+    last_downloaded = 0
+    try:
+        for sibling in siblings:
+            name = sibling.rfilename
+            expected = sibling.size or 0
+            target_file = target / name
+            # 已存在同等大小文件视为完成（续传/幂等）
+            if expected > 0 and target_file.is_file() and target_file.stat().st_size == expected:
+                downloaded += expected
+                continue
+            url = f"{endpoint}/{MODEL_REPO}/resolve/main/{name}"
+            with session.get(url, stream=True, timeout=(15, 120)) as resp:
+                resp.raise_for_status()
+                with open(target_file, "wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=1 << 20):
+                        if not chunk:
+                            continue
+                        fh.write(chunk)
+                        downloaded += len(chunk)
+                        now = time.monotonic()
+                        if now - last_tick >= PROGRESS_INTERVAL:
+                            speed = (downloaded - last_downloaded) / max(now - last_tick, 1e-9)
+                            _emit_progress(downloaded, total, speed, name)
+                            last_tick = now
+                            last_downloaded = downloaded
+    finally:
+        session.close()
+    _emit_progress(total, total, 0.0, "")
 
 
 def _download_model(target: Path) -> None:
-    """从 HuggingFace 官方仓库下载模型权重到 target 目录。
+    """从 HuggingFace 仓库下载模型权重到 target 目录。
 
     下载期间临时允许在线（worker 常驻默认离线，见模块头部的离线设置），
     这样既保证打包后不自动联网，也允许首次运行时拉取官方模型。
@@ -68,12 +131,17 @@ def _download_model(target: Path) -> None:
     try:
         with contextlib.redirect_stdout(sys.stderr):
             import huggingface_hub.constants as hf_constants  # type: ignore
-            from huggingface_hub import snapshot_download  # type: ignore
         # huggingface_hub 的离线标志/端点在 import 时缓存为模块常量，
         # 仅 pop 或 set 环境变量无效，必须显式覆盖其缓存值。
         hf_constants.HF_HUB_OFFLINE = False
         hf_constants.ENDPOINT = os.environ["HF_ENDPOINT"]
-        snapshot_download(MODEL_REPO, local_dir=str(target))
+        try:
+            _stream_download(target, hf_constants.ENDPOINT.rstrip("/"))
+        except Exception:
+            logging.exception("流式下载失败，回退 snapshot_download")
+            with contextlib.redirect_stdout(sys.stderr):
+                from huggingface_hub import snapshot_download  # type: ignore
+            snapshot_download(MODEL_REPO, local_dir=str(target))
     finally:
         for key, value in saved.items():
             if value is None:
