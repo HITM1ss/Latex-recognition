@@ -47,13 +47,9 @@ npx tauri dev
 
 ## 离线打包说明
 
-发布版已内置 **worker sidecar**：GitHub Actions 发版时自动用 PyInstaller
-把 `formula_worker.py` + torch/transformers/texteller 打成独立 exe
-（`scripts/build-worker-exe.ps1`，产物 `src-tauri/resources/worker-dist/`，
-已 gitignore），随安装包分发 —— **用户机器无需安装 Python**。
-
-Rust 端 worker 定位顺序：`AXIOM_FORMULA_WORKER_BIN` → 随包 sidecar exe →
-本机 `py -3.11` 脚本（开发兜底）。本地开发没有 sidecar 时仍走系统 Python。
+开发阶段 worker 调用本机 Python。正式发布时应将 Python worker 用
+Nuitka（见 `scripts/build-worker-exe.ps1`）打成 sidecar exe，并通过
+`AXIOM_FORMULA_WORKER_BIN` 指向它，用户机器无需安装 Python。
 
 模型权重**不随安装包捆绑**：首次启动时 worker 自动从 HuggingFace 仓库
 （`OleehyO/TexTeller`，默认走 hf-mirror 镜像）下载到**安装目录同级**
