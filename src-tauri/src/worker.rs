@@ -409,6 +409,11 @@ fn resolve_worker_command(app: &AppHandle) -> Result<(String, Vec<String>), Stri
         }
     }
 
+    // 优先使用随包/仓库内置的 PyInstaller sidecar（用户机器无需 Python）。
+    if let Some(sidecar) = worker_sidecar_path(app) {
+        return Ok((sidecar.to_string_lossy().into_owned(), Vec::new()));
+    }
+
     let script = worker_script_path(app).ok_or_else(|| {
         "找不到 resources/formula_worker.py；请确认 Tauri 资源配置或源码目录完整".to_string()
     })?;
@@ -426,6 +431,21 @@ fn resolve_worker_command(app: &AppHandle) -> Result<(String, Vec<String>), Stri
     }
     args.push(script.to_string_lossy().into_owned());
     Ok((python, args))
+}
+
+/// PyInstaller 打包的独立 worker（onedir），由 build-worker-exe.ps1 产出到
+/// resources/worker-dist/formula-worker/formula-worker.exe；打包安装后随
+/// resource 目录带出。
+fn worker_sidecar_path(app: &AppHandle) -> Option<PathBuf> {
+    let mut candidates = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources/worker-dist/formula-worker/formula-worker.exe")];
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("worker-dist/formula-worker/formula-worker.exe"));
+        candidates.push(resource_dir.join("formula-worker/formula-worker.exe"));
+    }
+    candidates
+        .into_iter()
+        .find(|path| fs::metadata(path).is_ok())
 }
 
 fn worker_script_path(app: &AppHandle) -> Option<PathBuf> {

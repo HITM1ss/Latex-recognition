@@ -21,7 +21,7 @@
 | 前端 | 原生 HTML/CSS/JS + Tailwind(CDN) + KaTeX(CDN) + Material Symbols(CDN) | 单文件 `Frontend/index.html`，无打包器、无框架 |
 | 桌面壳 | Tauri 2（Rust）/ tao / webview2 | 无边框窗口（自绘标题栏） |
 | 后端编排 | Rust commands + worker 进程管理 | 见 `src-tauri/src/*` |
-| 推理 | Python 3.11 + `texteller`（TrOCR 架构）+ torch CPU | 常驻子进程 |
+| 推理 | Python 3.11 / **发布版内置 PyInstaller sidecar** | 常驻子进程，新机免装 Python |
 | 模型 | `OleehyO/TexTeller`（HuggingFace，3.0 权重 `model.safetensors` ~1.19GB） | 不随包捆绑，首次自动下载 |
 | 更新 | `tauri-plugin-updater` + GitHub Releases + 自签名密钥 | CI 一键发版 |
 | 构建/发版 | GitHub Actions（`release.yml`） | Windows NSIS perMachine 安装包 |
@@ -143,6 +143,13 @@ d:\Latex-recognition\
   - `Drop`：发送 `{"type":"shutdown"}` 并 kill。
 
 ### 4.3 Python worker（`src-tauri/resources/formula_worker.py`）
+
+**运行形态**：
+- **发布版**：内置 PyInstaller sidecar（`scripts/build-worker-exe.ps1` 构建，产物
+  `src-tauri/resources/worker-dist/formula-worker/formula-worker.exe`，约 1GB，已
+  gitignore，CI 发版时自动构建并打进安装包），用户机器**无需 Python**。
+- **开发态**：无 sidecar 时 Rust 回退 `py -3.11` 运行本脚本。
+- Rust 定位顺序：`AXIOM_FORMULA_WORKER_BIN` → 随包 sidecar → 系统 Python（见 `worker.rs::resolve_worker_command`）。
 
 - **模块头**（最重要）：进程一启动就 `os.environ.setdefault`：`HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`（**日常必须离线**）以及 `HF_ENDPOINT=https://hf-mirror.com`（**必须在任何 huggingface_hub import 之前设置**，见 §6 的大坑）。
 - **协议**：stdout 每行一个 JSON；stderr 只做日志。
@@ -337,6 +344,6 @@ npx tauri build --bundles nsis
 
 - 前端静态资源 still CDN，未本地化 → 完全离线安装包需要处理。
 - 模型选择只有 TexTeller；`list_models` 已设计成数组，新增模型注册一条 + 实现对应 worker 下载即可。
-- worker 仍依赖用户机器 Python 3.11；`scripts/build-worker-exe.ps1`（Nuitka sidecar）是既定但尚未启用的方向。
+- worker 已通过 **PyInstaller sidecar** 落地，发布版新机零依赖；开发仍可用本机 Python。
 - 模型存储的迁移/清理（新老目录并存）未做自动处理。
 - 更新下载/安装的交互细节（如强制重试、失败日志展示）可再打磨。

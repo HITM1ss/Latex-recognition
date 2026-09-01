@@ -1,6 +1,7 @@
 # Rust/Tauri build output
 target/
 src-tauri/target/
+build/
 
 # Local Python environments and caches
 .venv/
@@ -10,6 +11,10 @@ __pycache__/
 # Optional generated model copies (keep them out of source control by default)
 # Remove this rule if the release repository intentionally vendors model files.
 src-tauri/resources/models/
+
+# PyInstaller-built worker sidecar (built by scripts/build-worker-exe.ps1 /
+# the release CI). ~1GB of torch runtime, intentionally not committed.
+src-tauri/resources/worker-dist/
 
 # Updater signing keys (never commit the private key)
 src-tauri/updater.key

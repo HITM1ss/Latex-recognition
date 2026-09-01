@@ -10,7 +10,7 @@
 - Rust/Tauri 通过 JSONL worker 协议调用本地推理
 - LaTeX 编辑、复制、SVG 导出、本地历史记录
 - 设置页软件更新（tauri-plugin-updater + GitHub Releases，见 docs/UPDATING.md）
-- 标准/高精度/快速设置项已接入 UI；MVP 阶段共用同一 TexTeller 权重，后续再替换不同模型
+- 设置页「识别模型」卡片动态渲染模型列表，支持下载/删除权重
 
 ## 开发环境
 
@@ -47,19 +47,25 @@ npx tauri dev
 
 ## 离线打包说明
 
-开发阶段 worker 调用本机 Python。正式发布时应将 Python worker 用
-Nuitka（见 `scripts/build-worker-exe.ps1`）打成 sidecar exe，并通过
-`AXIOM_FORMULA_WORKER_BIN` 指向它，用户机器无需安装 Python。
+发布版已内置 **worker sidecar**：GitHub Actions 发版时自动用 PyInstaller
+把 `formula_worker.py` + torch/transformers/texteller 打成独立 exe
+（`scripts/build-worker-exe.ps1`，产物 `src-tauri/resources/worker-dist/`，
+已 gitignore），随安装包分发 —— **用户机器无需安装 Python**。
 
-模型权重**不随安装包捆绑**：首次启动时 worker 自动从 HuggingFace 官方仓库
-（`OleehyO/TexTeller`）下载到用户数据目录（国内可设 `HF_ENDPOINT=https://hf-mirror.com`），
-下载完成后离线复用，与应用版本解耦。若需完全离线分发，可把模型目录拷入
+Rust 端 worker 定位顺序：`AXIOM_FORMULA_WORKER_BIN` → 随包 sidecar exe →
+本机 `py -3.11` 脚本（开发兜底）。本地开发没有 sidecar 时仍走系统 Python。
+
+模型权重**不随安装包捆绑**：首次启动时 worker 自动从 HuggingFace 仓库
+（`OleehyO/TexTeller`，默认走 hf-mirror 镜像）下载到**安装目录同级**
+（如 `D:\Program Files\Axiom_Logic_Model`），下载完成后离线复用，与应用版本
+解耦。若需完全离线分发，可把模型目录拷入
 `src-tauri/resources/models/texteller` 后调整 `tauri.conf.json` 的 resources。
 
 worker 支持以下可选环境变量：
 - `AXIOM_TEXTELLER_MODEL_DIR`：指定 TexTeller 权重目录（默认找捆绑资源）
 - `AXIOM_TEXTELLER_ONNX=1`：改用 ONNX Runtime 推理（需 `optimum` + `onnxruntime`）
 - `AXIOM_TEXTELLER_BEAMS`：解码 beam 数，默认 1，调大可提升准确率但变慢
+- `AXIOM_FORMULA_WORKER_BIN`：手动指定 worker（sidecar exe 或脚本）
 
 当前前端仍使用 Tailwind、字体和 Material Symbols CDN；这不影响本地识别，
 但要做完全断网的安装包，还需要把这些静态资源本地化。

@@ -30,7 +30,8 @@
     "createUpdaterArtifacts": true,
     "resources": [
       "resources/formula_worker.py",
-      "resources/requirements.txt"
+      "resources/requirements.txt",
+      "resources/worker-dist/"
     ],
     "icon": [
       "icons/32x32.png",

@@ -1,42 +1,72 @@
-# Build the Python formula worker as a standalone .exe (Nuitka sidecar).
-
+# Build the Python formula worker as a standalone .exe (PyInstaller sidecar).
+#
 # Run from the repo root:
 #   .\scripts\build-worker-exe.ps1
 #
-# The produced exe can be pointed to via AXIOM_FORMULA_WORKER_BIN so the
-# Rust side never touches a system Python. Note: bundling torch against
-# Nuitka is heavy (multi-GB output, long build time); run it on a release
-# machine and commit nothing to git.
+# Output: src-tauri\resources\worker-dist\formula-worker\formula-worker.exe
+# (onedir layout - the whole folder is shipped inside the Tauri bundle and
+#  located automatically by worker.rs, so end users never need Python.)
+#
+# Why PyInstaller over Nuitka: torch/transformers/tokenizers all ship mature
+# hooks in pyinstaller-hooks-contrib (DLLs + data files auto-collected), which
+# makes failures like "exe starts and exits instantly" far less likely.
 
 param(
   [string]$Python = "py",
   [string]$Worker = "src-tauri\resources\formula_worker.py",
-  [string]$OutDir = "dist\worker"
+  [string]$OutDist = "src-tauri\resources\worker-dist"
 )
 
 $ErrorActionPreference = "Stop"
+# PowerShell 7 会把原生命令（pip/python）的 stderr 输出视为 ErrorRecord，
+# 这里显式关闭，避免成功运行的命令因警告被当作致命错误。
+$PSNativeCommandUseErrorActionPreference = $false
 
-Write-Output "==> Installing Nuitka (dev dependency)"
-& $Python -3.11 -m pip install nuitka 2>$null
+Write-Output "==> Ensuring PyInstaller (dev dependency)"
+& $Python -3.11 -m pip install -q pyinstaller
 
-Write-Output "==> Building standalone worker exe (this takes a while on first run)"
-New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-& $Python -3.11 -m nuitka `
-  --standalone `
-  --windows-console-mode=disable `
-  --output-dir=$OutDir `
-  --output-filename=formula-worker.exe `
+Write-Output "==> Building standalone worker exe (takes a while on first run)"
+$buildDir = Join-Path $PSScriptRoot "..\build\worker-pyinst"
+New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
+
+& $Python -3.11 -m PyInstaller `
+  --noconfirm --clean `
+  --distpath (Join-Path $buildDir "dist") `
+  --workpath (Join-Path $buildDir "work") `
+  --specpath (Join-Path $buildDir "spec") `
+  --onedir `
+  --name formula-worker `
+  --collect-all texteller `
+  --collect-all transformers `
+  --collect-all tokenizers `
+  --collect-all huggingface_hub `
+  --collect-submodules torch `
+  --collect-submodules torchvision `
+  --hidden-import=torchvision.transforms.v2 `
+  --hidden-import=regex `
+  --hidden-import=safetensors `
+  --hidden-import=typing_extensions `
+  --hidden-import=certifi `
+  --hidden-import=requests `
+  --hidden-import=urllib3 `
+  --hidden-import=PIL `
   $Worker
 
 if ($LASTEXITCODE -ne 0) {
-  throw "Nuitka build failed."
+  throw "PyInstaller build failed."
 }
 
-$exe = Join-Path $OutDir "formula-worker.dist\formula-worker.exe"
+$src = Join-Path $buildDir "dist\formula-worker"
+$target = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..\src-tauri")).Path "resources\worker-dist\formula-worker"
+$targetParent = Split-Path $target -Parent
+New-Item -ItemType Directory -Path $targetParent -Force | Out-Null
+if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+Copy-Item $src $target -Recurse
+
+$exe = Join-Path $target "formula-worker.exe"
+$sizeB = (Get-ChildItem $target -Recurse -File | Measure-Object -Property Length -Sum).Sum
 Write-Output ""
-Write-Output "Built: $(Resolve-Path $exe)"
-Write-Output "Usage in the app:"
-Write-Output "  `$env:AXIOM_FORMULA_WORKER_BIN = '$(Resolve-Path $exe)'"
-Write-Output ""
-Write-Output "Tip: ship the .dist folder next to your installer and set"
-Write-Output "AXIOM_FORMULA_WORKER_BIN to the bundled exe path at launch."
+Write-Output "Built: $exe"
+Write-Output "Folder size: {0:N1} MB" -f ($sizeB / 1MB)
+Write-Output "Runtime dependency on system Python: NONE (self-contained)."
+Write-Output "Rust will prefer this sidecar automatically; keep AXIOM_FORMULA_WORKER_BIN unset."
