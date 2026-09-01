@@ -70,6 +70,9 @@ pub struct DownloadProgress {
     pub downloaded: u64,
     pub speed_bps: f64,
     pub filename: String,
+    /// 环境准备阶段的文字状态（如"正在安装 Python…"），下载进度事件为 None。
+    #[serde(default)]
+    pub stage: Option<String>,
 }
 
 pub struct FormulaWorker {
@@ -176,6 +179,7 @@ impl FormulaWorker {
                         downloaded: message.downloaded.unwrap_or(0),
                         speed_bps: message.speed_bps.unwrap_or(0.0),
                         filename: message.filename.unwrap_or_default(),
+                        stage: None,
                     });
                 }
                 continue;
@@ -438,4 +442,192 @@ fn worker_script_path(app: &AppHandle) -> Option<PathBuf> {
     candidates
         .into_iter()
         .find(|path| fs::metadata(path).is_ok())
+}
+
+// ---------------------------------------------------------------------------
+// 运行环境准备：Python 3.11 + texteller/torch（新机器点“下载权重”时自动完成）
+// ---------------------------------------------------------------------------
+
+const PYTHON_INSTALLER_URL: &str =
+    "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe";
+
+/// 发送一条阶段状态消息（供前端按钮显示安装进度文字）。
+fn emit_stage(channel: Option<&tauri::ipc::Channel<DownloadProgress>>, text: &str) {
+    if let Some(ch) = channel {
+        let _ = ch.send(DownloadProgress {
+            total: 0,
+            downloaded: 0,
+            speed_bps: 0.0,
+            filename: String::new(),
+            stage: Some(text.to_string()),
+        });
+    }
+}
+
+/// 静默运行命令并等待结束；stderr 被丢弃（错误统一走 Err）。
+fn run_silent(program: &str, args: &[&str], timeout_secs: u64) -> Result<(), String> {
+    let mut command = program_command(program, args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("无法启动 {program}：{error}"))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("等待 {program} 结束失败：{error}"))?
+        {
+            if status.success() {
+                return Ok(());
+            }
+            return Err(format!("{program} 执行失败（退出码 {:?}）", status.code()));
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            return Err(format!("{program} 执行超时（{} 秒）", timeout_secs));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+}
+
+fn program_command(program: &str, args: &[&str]) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    command.args(args);
+    command
+}
+
+/// 让 `py -3.11` 打印其真实 python 可执行文件路径。
+fn python_exe_from_launcher() -> Option<String> {
+    let output = program_command("py", &["-3.11", "-c", "import sys;print(sys.executable)"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+/// 用户级安装的 Python 3.11（默认路径）。
+fn python_exe_from_user_install() -> Option<String> {
+    let appdata = std::env::var_os("LOCALAPPDATA")?;
+    let candidate = PathBuf::from(appdata)
+        .join("Programs")
+        .join("Python")
+        .join("Python311")
+        .join("python.exe");
+    candidate.is_file().then(|| candidate.to_string_lossy().into_owned())
+}
+
+/// 探测可用的 Python 3.11（launcher 优先，其次用户级安装）。
+fn detect_python() -> Option<String> {
+    python_exe_from_launcher().or_else(python_exe_from_user_install)
+}
+
+/// 用官方安装器静默安装 Python 3.11（当前用户级，无需管理员）。
+fn install_python() -> Result<(), String> {
+    let installer = std::env::temp_dir().join("python-3.11.9-amd64.exe");
+    if !installer.is_file() {
+        // Windows 10+ 自带 curl。
+        run_silent(
+            "curl.exe",
+            &[
+                "-L",
+                "-sS",
+                "--fail",
+                "-o",
+                installer.to_str().unwrap_or_default(),
+                PYTHON_INSTALLER_URL,
+            ],
+            600,
+        )?;
+    }
+    run_silent(
+        installer.to_str().unwrap_or_default(),
+        &[
+            "/quiet",
+            "InstallAllUsers=0",
+            "PrependPath=0",
+            "Include_launcher=1",
+            "Include_test=0",
+        ],
+        1200,
+    )
+}
+
+/// 检查 Python 环境是否已具备 texteller / torch / torchvision。
+fn has_deps(python: &str) -> bool {
+    run_silent(
+        python,
+        &[
+            "-c",
+            "import texteller, torch, torchvision",
+        ],
+        60,
+    )
+    .is_ok()
+}
+
+/// 安装识别依赖（torch CPU 版 + texteller）。
+fn install_deps(python: &str) -> Result<(), String> {
+    run_silent(
+        python,
+        &[
+            "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+            "torch==2.13.0", "torchvision==0.28.0",
+            "--index-url", "https://download.pytorch.org/whl/cpu",
+        ],
+        1800,
+    )?;
+    run_silent(
+        python,
+        &[
+            "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+            "texteller",
+        ],
+        900,
+    )
+}
+
+/// 确保运行环境就绪（Python 3.11 + texteller/torch），未就绪则自动安装。
+/// 完成后会把可用的 python 可执行文件写入 AXIOM_FORMULA_PYTHON，
+/// 供 resolve_worker_command 使用。
+pub fn ensure_runtime(
+    progress: Option<&tauri::ipc::Channel<DownloadProgress>>,
+) -> Result<(), String> {
+    if cfg!(not(windows)) {
+        return Err("当前仅支持 Windows 上的自动环境安装".to_string());
+    }
+
+    emit_stage(progress, "检查 Python 环境…");
+    let python = match detect_python() {
+        Some(exe) => exe,
+        None => {
+            emit_stage(progress, "正在安装 Python 3.11（首次约需 1-2 分钟）…");
+            install_python()?;
+            emit_stage(progress, "验证 Python 安装…");
+            detect_python().ok_or_else(|| {
+                "Python 3.11 安装完成但未能定位，请尝试重新点击下载权重".to_string()
+            })?
+        }
+    };
+    std::env::set_var("AXIOM_FORMULA_PYTHON", &python);
+
+    if !has_deps(&python) {
+        emit_stage(
+            progress,
+            "正在安装识别依赖（texteller / torch CPU），首次约需数分钟…",
+        );
+        install_deps(&python)?;
+    }
+    emit_stage(progress, "运行环境就绪");
+    Ok(())
 }

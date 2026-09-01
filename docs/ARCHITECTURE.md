@@ -337,6 +337,9 @@ npx tauri build --bundles nsis
 
 - 前端静态资源 still CDN，未本地化 → 完全离线安装包需要处理。
 - 模型选择只有 TexTeller；`list_models` 已设计成数组，新增模型注册一条 + 实现对应 worker 下载即可。
-- worker 仍依赖用户机器 Python 3.11；`scripts/build-worker-exe.ps1`（Nuitka sidecar）是既定但尚未启用的方向。
+- worker 仍默认用用户机器 Python 3.11，但点「下载权重」会自动安装环境
+  （`worker.rs::ensure_runtime`：缺 Python 3.11 就静默装官方解释器，缺
+  texteller/torch 就自动 pip 安装 CPU 版），新机器一键就绪。
+  完全免 Python 的 sidecar（`scripts/build-worker-exe.ps1`）是备用方向。
 - 模型存储的迁移/清理（新老目录并存）未做自动处理。
 - 更新下载/安装的交互细节（如强制重试、失败日志展示）可再打磨。

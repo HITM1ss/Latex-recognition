@@ -861,6 +861,11 @@ async function renderModels() {
               const channel = new Channel();
               channel.onmessage = (msg) => {
                 if (!msg) return;
+                // 环境准备阶段（安装 Python/依赖）的纯文字状态
+                if (msg.stage) {
+                  download.textContent = msg.stage;
+                  return;
+                }
                 const total = msg.total || 0;
                 const got = msg.downloaded || 0;
                 if (total > 0) {

@@ -26,7 +26,8 @@ pub fn list_models(app: AppHandle) -> Vec<ModelInfo> {
     }]
 }
 
-/// 下载指定模型的权重（worker 启动时边下载边把进度推送到前端 onEvent 通道）。
+/// 下载指定模型：先确保运行环境（Python 3.11 + texteller/torch，缺失自动装），
+/// 再拉起 worker（其启动阶段会下载权重，进度经 onEvent 通道推送）。
 #[tauri::command]
 pub fn download_model(
     app: AppHandle,
@@ -37,6 +38,9 @@ pub fn download_model(
     if id != "texteller" {
         return Err(format!("未知模型: {id}"));
     }
+    // 环境准备（新机器自动安装 Python/依赖），阶段消息复用下载进度通道。
+    crate::worker::ensure_runtime(Some(&on_event))?;
+
     let mut worker_slot = state
         .worker
         .lock()

@@ -51,6 +51,10 @@ npx tauri dev
 Nuitka（见 `scripts/build-worker-exe.ps1`）打成 sidecar exe，并通过
 `AXIOM_FORMULA_WORKER_BIN` 指向它，用户机器无需安装 Python。
 
+**新机器零配置**：应用设置页点「下载权重」会自动执行环境准备——检测
+Python 3.11，缺失则静默安装官方解释器；随后自动安装 texteller/torch
+（CPU），全部就绪后再下载模型权重。全程按钮实时显示阶段文字。
+
 模型权重**不随安装包捆绑**：首次启动时 worker 自动从 HuggingFace 仓库
 （`OleehyO/TexTeller`，默认走 hf-mirror 镜像）下载到**安装目录同级**
 （如 `D:\Program Files\Axiom_Logic_Model`），下载完成后离线复用，与应用版本
