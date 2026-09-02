@@ -234,6 +234,23 @@
         .remove-weight-btn:hover svg > .del-line {
             transform: translateY(.5px);
         }
+    /* 打开权重文件夹按钮 —— Lucide Animated FolderMinusIcon（folder minus）的纯 CSS 转译
+           悬停时减号线条以描边动画重新绘出 */
+        .open-folder-btn svg > .fd-minus {
+            stroke-dasharray: 6;
+            stroke-dashoffset: 6;
+            opacity: 0;
+        }
+        .open-folder-btn:hover svg > .fd-minus,
+        .open-folder-btn:focus-visible svg > .fd-minus {
+            animation: fd-minus-draw .4s ease-in-out;
+            stroke-dashoffset: 0;
+            opacity: 1;
+        }
+        @keyframes fd-minus-draw {
+            0% { stroke-dashoffset: 6; opacity: 0; }
+            100% { stroke-dashoffset: 0; opacity: 1; }
+        }
     </style>
 </head>
 <body class="bg-[#F4F5F7] text-on-surface h-full flex flex-col overflow-hidden font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
@@ -256,11 +273,11 @@
 <!-- SideNavBar -->
 <nav class="hidden md:flex flex-col h-full w-20 bg-[#F4F5F7] shrink-0 z-20 relative">
 <!-- Header -->
-<div class="p-md"><div class="flex items-center gap-sm mb-xs text-primary text-headline-md font-headline-md font-bold"><span class="material-symbols-outlined text-[32px] mx-auto" data-icon="functions">functions</span></div></div>
+<div class="p-md"><div class="flex items-center gap-sm mb-xs text-primary text-headline-md font-headline-md font-bold"><span id="brandSymbol" class="mx-auto inline-block text-[26px] leading-none" aria-label="f_x"></span></div></div>
 <!-- Main Navigation -->
 <div class="flex-1 overflow-y-auto py-sm px-sm space-y-1">
 <!-- Active: Workspace -->
-<button id="navWorkspace" class="nav-btn-item flex items-center w-full px-md py-2.5 rounded-lg relative active" onclick="showView('workspace')" aria-label="工作区"><span class="material-symbols-outlined text-[28px] mx-auto" data-icon="edit_square">edit_square</span></button>
+<button id="navWorkspace" class="nav-btn-item flex items-center w-full px-md py-2.5 rounded-lg relative active" onclick="showView('workspace')" aria-label="工作区"><svg class="scan-text-icon mx-auto text-on-surface-variant" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path class="scan-line" pathLength="1" d="M7 8h8"/><path class="scan-line" pathLength="1" d="M7 12h10"/><path class="scan-line" pathLength="1" d="M7 16h6"/></svg></button>
 
 <button id="navSettings" class="nav-btn-item cog-btn flex items-center w-full gap-md px-md py-2.5 rounded-lg" onclick="showView('settings')" aria-label="设置"><span class="cog-icon flex items-center justify-center mx-auto text-[28px]"><svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="28" height="28" xmlns="http://www.w3.org/2000/svg"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/></svg></span></button>
 </div>
@@ -353,16 +370,12 @@
 <span class="material-symbols-outlined text-[18px]">content_copy</span>
             复制 LaTeX
         </button>
+<button id="copyMathMLButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="复制 MathML 格式">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">functions</span>
+<span class="hidden sm:inline">复制 MathML</span>
+</button>
 </div>
 <div class="flex items-center gap-2">
-<button id="exportImageButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="导出为图片">
-<span class="material-symbols-outlined text-[18px] text-on-surface-variant">image</span>
-<span class="hidden sm:inline">导出为图片</span>
-</button>
-<button id="sendWordButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="发送至 Word">
-<span class="material-symbols-outlined text-[18px] text-on-surface-variant">description</span>
-<span class="hidden sm:inline">发送至 Word</span>
-</button>
 <button id="saveHistoryButton" class="bg-surface-container-lowest hover:bg-surface-container text-on-surface py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium text-[14px] transition-colors shadow-sm border border-outline-variant/30" title="保存至历史记录">
 <span class="material-symbols-outlined text-[18px] text-on-surface-variant">bookmark_add</span>
 <span class="hidden sm:inline">保存</span>
@@ -540,19 +553,6 @@ function activateModel(row){
     const isSel = r === row;
     r.classList.toggle('active', isSel);
     r.setAttribute('aria-checked', isSel ? 'true' : 'false');
-    const dot = r.querySelector('.radio-dot');
-    dot.classList.toggle('border-primary', isSel);
-    dot.classList.toggle('border-outline-variant', !isSel);
-    if(isSel){
-      if(!dot.querySelector('span')){
-        const p = document.createElement('span');
-        p.className = 'w-2 h-2 rounded-full bg-primary';
-        dot.appendChild(p);
-      }
-    }else{
-      const n = dot.querySelector('span');
-      if(n) n.remove();
-    }
   });
   document.getElementById('modelBadge').textContent = row.dataset.label;
 }
@@ -628,8 +628,13 @@ function renderPreview(latex) {
   }
 }
 
+// TexTeller 输出形如 \[ ... \]，展示/编辑/复用时去掉首尾定界符，只保留公式本体
+function cleanLatex(value) {
+  return (value || '').trim().replace(/^\\\[/, '').replace(/\\\]$/, '').trim();
+}
+
 function updateLatex(value) {
-  currentLatex = value || '';
+  currentLatex = cleanLatex(value);
   const source = document.getElementById('latexSource');
   if (source && source.value !== currentLatex) source.value = currentLatex;
   renderPreview(currentLatex);
@@ -721,26 +726,46 @@ async function copyLatex() {
   showToast('LaTeX 已复制到剪贴板');
 }
 
-function escapeXml(value) {
-  return String(value).replace(/[<>&'"]/g, (char) => ({
-    '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;',
-  }[char]));
+// TeX → MathML（KaTeX mathml 输出），供 Word / MathType 等消费
+function latexToMathML(value) {
+  if (typeof katex === 'undefined') return '';
+  try {
+    const html = katex.renderToString(cleanLatex(value), {
+      displayMode: true,
+      throwOnError: false,
+      output: 'mathml',
+    });
+    const match = html.match(/<math[\s\S]*?<\/math>/);
+    return match ? match[0] : '';
+  } catch (_) {
+    return '';
+  }
 }
 
-function exportFormulaSvg() {
+async function copyMathML() {
   const value = (document.getElementById('latexSource') || {}).value || currentLatex;
   if (!value.trim()) {
     showToast('请先识别一张公式图片', true);
     return;
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="180" viewBox="0 0 1200 180"><rect width="1200" height="180" fill="white"/><text x="40" y="105" font-family="serif" font-size="32" fill="#191c1e">${escapeXml(value)}</text></svg>`;
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'formula.svg';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast('公式已导出为 SVG');
+  const mathml = latexToMathML(value);
+  if (!mathml) {
+    showToast('MathML 生成失败', true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(mathml);
+  } catch (_) {
+    const helper = document.createElement('textarea');
+    helper.value = mathml;
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand('copy');
+    helper.remove();
+  }
+  showToast('MathML 已复制到剪贴板');
 }
 
 function saveHistory() {
@@ -802,19 +827,34 @@ async function renderModels() {
     row.appendChild(left);
 
     if (m.ready) {
-      const dot = document.createElement('span');
-      dot.className = 'radio-dot w-5 h-5 rounded-full border-2 grid place-items-center ' + (m.id === selectedModel ? 'border-primary' : 'border-outline-variant');
-      if (m.id === selectedModel) {
-        const inner = document.createElement('span');
-        inner.className = 'w-2 h-2 rounded-full bg-primary';
-        dot.appendChild(inner);
-      }
-      row.appendChild(dot);
+      const right = document.createElement('span');
+      right.className = 'flex items-center gap-1 ml-auto shrink-0';
       row.addEventListener('click', () => {
         selectedModel = m.id;
         localStorage.setItem('axiom.model', selectedModel);
         activateModel(row);
       });
+
+      const openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'open-folder-btn flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors shrink-0';
+      openBtn.title = '打开权重文件夹';
+      openBtn.setAttribute('aria-label', '打开权重文件夹');
+      openBtn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+          <path class="fd-minus" d="M9 13h6"/>
+        </svg>`;
+      openBtn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        try {
+          const opened = await localInvoke('open_model_dir');
+          showToast('已打开：' + opened, false);
+        } catch (error) {
+          showToast('打开失败：' + ((error && error.message) || String(error)), true);
+        }
+      });
+      right.appendChild(openBtn);
 
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -844,7 +884,8 @@ async function renderModels() {
         }
         renderModels();
       });
-      row.appendChild(remove);
+      right.appendChild(remove);
+      row.appendChild(right);
     } else {
       const download = document.createElement('button');
       download.type = 'button';
@@ -900,12 +941,95 @@ async function renderModels() {
   }
 }
 
+// 侧栏 Logo：$f_x$ 数学符号（KaTeX 渲染，颜色继承父级 text-primary）
+// KaTeX 不可用时降级为纯 HTML f 下标 x。
+function initBrandSymbol() {
+  const el = document.getElementById('brandSymbol');
+  if (!el) return;
+  if (typeof katex === 'function') {
+    try {
+      katex.render('f_x', el, { throwOnError: false, displayMode: false });
+      return;
+    } catch (_) { /* 渲染失败走降级 */ }
+  }
+  el.innerHTML = '<i>f</i><sub>x</sub>';
+}
+
+// 工作区导航图标：Lucide Animated "scan text"（React/motion 版移植为纯 Web Animations API）
+// 悬停时扫描线逐条擦除再逐条绘出，形成扫描波；移出时逐条恢复。
+function initScanTextIcon() {
+  const button = document.getElementById('navWorkspace');
+  if (!button) return;
+  const svg = button.querySelector('.scan-text-icon');
+  if (!svg) return;
+  const lines = Array.from(svg.querySelectorAll('.scan-line'));
+  if (!lines.length) return;
+
+  lines.forEach((line) => {
+    line.style.strokeDasharray = '1';
+    line.style.strokeDashoffset = '0';
+    line.style.opacity = '1';
+  });
+
+  let animations = [];
+  let waveId = 0;
+  const stopAnims = () => {
+    animations.forEach((anim) => anim.cancel());
+    animations = [];
+  };
+
+  // 每条扫描线：擦除（0→1 偏移）→ 停顿 → 绘出（1→0 偏移），每行依次延迟 50ms
+  const runWave = async () => {
+    const id = ++waveId;
+    stopAnims();
+    const wipes = lines.map((line, i) => line.animate(
+      [
+        { strokeDashoffset: '0', opacity: 1 },
+        { strokeDashoffset: '1', opacity: 0 },
+      ],
+      { duration: 150, delay: i * 50, easing: 'ease-out', fill: 'both' }
+    ));
+    animations.push(...wipes);
+    await Promise.all(wipes.map((anim) => anim.finished.catch(() => {})));
+    if (id !== waveId) return;
+    const draws = lines.map((line, i) => line.animate(
+      [
+        { strokeDashoffset: '1', opacity: 0 },
+        { strokeDashoffset: '0', opacity: 1 },
+      ],
+      { duration: 150, delay: i * 50, easing: 'ease-out', fill: 'both' }
+    ));
+    animations.push(...draws);
+    await Promise.all(draws.map((anim) => anim.finished.catch(() => {})));
+  };
+
+  const restoreLines = () => {
+    waveId++;
+    stopAnims();
+    lines.forEach((line, i) => {
+      const anim = line.animate(
+        [
+          { strokeDashoffset: '1', opacity: 0 },
+          { strokeDashoffset: '0', opacity: 1 },
+        ],
+        { duration: 150, delay: i * 50, easing: 'ease-out', fill: 'both' }
+      );
+      animations.push(anim);
+    });
+  };
+
+  button.addEventListener('mouseenter', runWave);
+  button.addEventListener('mouseleave', restoreLines);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const source = document.getElementById('latexSource');
 
   renderModels();
+  initBrandSymbol();
+  initScanTextIcon();
 
   if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => fileInput.click());
@@ -947,9 +1071,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('copyLatexButton')?.addEventListener('click', copyLatex);
   document.getElementById('copyPreviewButton')?.addEventListener('click', copyLatex);
-  document.getElementById('exportImageButton')?.addEventListener('click', exportFormulaSvg);
+  document.getElementById('copyMathMLButton')?.addEventListener('click', copyMathML);
   document.getElementById('saveHistoryButton')?.addEventListener('click', saveHistory);
-  document.getElementById('sendWordButton')?.addEventListener('click', copyLatex);
   document.getElementById('tbMinimize')?.addEventListener('click', () => {
     const w = window.__TAURI__ && window.__TAURI__.window;
     if (w) w.getCurrentWindow().minimize();

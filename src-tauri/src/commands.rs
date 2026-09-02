@@ -62,6 +62,22 @@ pub async fn download_model(
     .map_err(|error| format!("下载任务异常终止：{error}"))?
 }
 
+/// 打开模型权重目录（不存在则先创建）；返回打开的路径。
+#[tauri::command]
+pub fn open_model_dir(app: AppHandle) -> Result<String, String> {
+    let dir = crate::worker::model_data_dir(&app).ok_or("无法定位模型权重目录")?;
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir)
+            .map_err(|error| format!("权重目录不存在且创建失败：{}（{}）", dir.display(), error))?;
+    }
+    #[cfg(windows)]
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map_err(|error| format!("无法打开目录：{}", error))?;
+    Ok(dir.display().to_string())
+}
+
 /// 删除指定模型的本地权重（会先停掉 worker 以释放文件句柄）。
 /// 随包内置的模型不可删除。
 #[tauri::command]
