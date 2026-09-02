@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::state::AppState;
 use crate::worker::{DownloadProgress, RecognizeRequest, RecognizeResponse};
@@ -28,31 +28,38 @@ pub fn list_models(app: AppHandle) -> Vec<ModelInfo> {
 
 /// 下载指定模型：先确保运行环境（Python 3.11 + texteller/torch，缺失自动装），
 /// 再拉起 worker（其启动阶段会下载权重，进度经 onEvent 通道推送）。
+/// 注意：环境安装与权重下载可能耗时数分钟，必须异步执行（Tauri 同步命令跑在主线程，
+/// 会把整个前端卡死，且进度事件也无法投递）。
 #[tauri::command]
-pub fn download_model(
+pub async fn download_model(
     app: AppHandle,
-    state: State<'_, AppState>,
     id: String,
     on_event: tauri::ipc::Channel<DownloadProgress>,
 ) -> Result<String, String> {
     if id != "texteller" {
         return Err(format!("未知模型: {id}"));
     }
-    // 环境准备（新机器自动安装 Python/依赖），阶段消息复用下载进度通道。
-    crate::worker::ensure_runtime(Some(&on_event))?;
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        // 环境准备（新机器自动安装 Python/依赖），阶段消息复用下载进度通道。
+        crate::worker::ensure_runtime(Some(&on_event))?;
 
-    let mut worker_slot = state
-        .worker
-        .lock()
-        .map_err(|_| "本地模型状态锁已损坏".to_string())?;
-    let should_spawn = match worker_slot.as_mut() {
-        Some(worker) => !worker.is_alive(),
-        None => true,
-    };
-    if should_spawn {
-        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, Some(on_event))?);
-    }
-    Ok("ready".to_string())
+        let mut worker_slot = state
+            .worker
+            .lock()
+            .map_err(|_| "本地模型状态锁已损坏".to_string())?;
+        let should_spawn = match worker_slot.as_mut() {
+            Some(worker) => !worker.is_alive(),
+            None => true,
+        };
+        if should_spawn {
+            *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, Some(on_event))?);
+        }
+        Ok("ready".to_string())
+    })
+    .await
+    .map_err(|error| format!("下载任务异常终止：{error}"))?
 }
 
 /// 删除指定模型的本地权重（会先停掉 worker 以释放文件句柄）。
@@ -96,28 +103,34 @@ pub fn delete_model(
 }
 
 #[tauri::command]
-pub fn recognize_image(
+pub async fn recognize_image(
     app: AppHandle,
-    state: State<'_, AppState>,
     request: RecognizeRequest,
 ) -> Result<RecognizeResponse, String> {
-    let mut worker_slot = state
-        .worker
-        .lock()
-        .map_err(|_| "本地模型状态锁已损坏".to_string())?;
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut worker_slot = state
+            .worker
+            .lock()
+            .map_err(|_| "本地模型状态锁已损坏".to_string())?;
 
-    let should_spawn = match worker_slot.as_mut() {
-        Some(worker) => !worker.is_alive(),
-        None => true,
-    };
-    if should_spawn {
-        *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, None)?);
-    }
+        let should_spawn = match worker_slot.as_mut() {
+            Some(worker) => !worker.is_alive(),
+            None => true,
+        };
+        if should_spawn {
+            // 冷启动时 worker 需要加载模型，可能耗时数十秒，异步执行避免卡主线程。
+            *worker_slot = Some(crate::worker::FormulaWorker::spawn(&app, None)?);
+        }
 
-    worker_slot
-        .as_mut()
-        .ok_or_else(|| "本地模型 worker 未创建".to_string())?
-        .recognize(&request)
+        worker_slot
+            .as_mut()
+            .ok_or_else(|| "本地模型 worker 未创建".to_string())?
+            .recognize(&request)
+    })
+    .await
+    .map_err(|error| format!("识别任务异常终止：{error}"))?
 }
 
 #[tauri::command]
