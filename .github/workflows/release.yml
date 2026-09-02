@@ -90,7 +90,7 @@ jobs:
           $sig = (Get-Content $env:SIG -Raw).Trim()
           $manifest = @{
             version = $version
-            notes   = "Axiom Logic $version"
+            notes   = "OpenTeX $version"
             pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = @{
               "windows-x86_64" = @{
@@ -107,7 +107,7 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: v${{ env.VERSION }}
           body: |
-            Axiom Logic ${{ env.VERSION }}
+            OpenTeX ${{ env.VERSION }}
           files: |
             ${{ env.EXE }}
             ${{ github.workspace }}/latest.json

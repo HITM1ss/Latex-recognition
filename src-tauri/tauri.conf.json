@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Axiom_Logic",
+  "productName": "OpenTeX",
   "version": "0.1.0",
-  "identifier": "com.axiomlogic.latex",
+  "identifier": "com.opentex.latex",
   "build": {
     "frontendDist": "../Frontend"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Axiom_Logic",
+        "title": "OpenTeX",
         "width": 1000,
         "height": 905,
         "minWidth": 700,

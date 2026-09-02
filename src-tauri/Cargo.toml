@@ -1,5 +1,5 @@
 [package]
-name = "axiom_logic"
+name = "opentex"
 version = "0.1.0"
 description = "Offline local LaTeX formula recognition"
 authors = ["you"]
@@ -11,7 +11,7 @@ rust-version = "1.77.2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "axiom_logic_lib"
+name = "opentex_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

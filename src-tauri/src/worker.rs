@@ -294,7 +294,7 @@ pub fn has_bundled_model(app: &AppHandle) -> bool {
 
 /// 决定权重目录：
 /// 1. 用户显式设置 `AXIOM_TEXTELLER_MODEL_DIR`（最高优先）
-/// 2. 正式版：安装目录同级 `Axiom_Logic_Model`（如 D:\Program Files\Axiom_Logic_Model）
+/// 2. 正式版：安装目录同级 `OpenTeX_Model`（如 D:\Program Files\OpenTeX_Model）
 ///    —— 与安装目录平级，避免升级覆盖、又常驻在用户可见位置
 /// 3. 开发模式 / 兜底：应用数据目录 models/texteller
 pub fn model_data_dir(app: &AppHandle) -> Option<PathBuf> {
@@ -307,7 +307,7 @@ pub fn model_data_dir(app: &AppHandle) -> Option<PathBuf> {
     if !cfg!(debug_assertions) {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(install_parent) = exe.parent().and_then(|p| p.parent()) {
-                return Some(install_parent.join("Axiom_Logic_Model"));
+                return Some(install_parent.join("OpenTeX_Model"));
             }
         }
     }
@@ -327,7 +327,7 @@ fn ensure_dir_elevated(dir: &std::path::Path) -> std::io::Result<()> {
     let script = format!(
         "New-Item -ItemType Directory -Force -Path '{escaped}' | Out-Null\n"
     );
-    let script_path = std::env::temp_dir().join("axiom_ensure_model_dir.ps1");
+    let script_path = std::env::temp_dir().join("opentex_ensure_model_dir.ps1");
     std::fs::write(&script_path, script)?;
     let launch = format!(
         "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}'",
@@ -372,7 +372,7 @@ fn ensure_model_dir_for_spawn(app: &AppHandle) -> Result<(), String> {
 }
 
 /// 未显式设置 `AXIOM_TEXTELLER_MODEL_DIR` 且本地没有捆绑模型时，
-/// 注入模型的下载/加载目录（正式版为安装目录同级 Axiom_Logic_Model）。
+/// 注入模型的下载/加载目录（正式版为安装目录同级 OpenTeX_Model）。
 fn inject_model_dir(app: &AppHandle, command: &mut Command) {
     if env::var("AXIOM_TEXTELLER_MODEL_DIR")
         .map(|value| !value.trim().is_empty())

@@ -1,11 +1,11 @@
-# Axiom Logic — 架构与接手说明
+# OpenTeX — 架构与接手说明
 
 > 本文档面向**其他 AI / 开发者**，目标是让人在**不依赖原作者**的情况下快速理解、修改、构建和发布本项目。
 > 请以**当前仓库代码**为准；`README.md` 中与本文冲突的描述（如模型目录、下载去向）是早期版本的残留，已被下述实现取代。
 
 ## 0. 一句话概述
 
-**Axiom Logic** 是一个 **完全离线的 LaTeX 公式识别桌面应用**：
+**OpenTeX** 是一个 **完全离线的 LaTeX 公式识别桌面应用**：
 
 - 前端 = 单个静态 HTML（原生 JS + Tailwind CDN + 原生 SVG 图标）
 - 桌面壳 = **Tauri 2 + Rust**（负责窗口、IPC、进程编排、自动更新）
@@ -30,7 +30,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 Axiom Logic（Windows 桌面）                    │
+│                 OpenTeX（Windows 桌面）                    │
 │                                                             │
 │  Frontend/index.html （WebView，单文件）                      │
 │    ├─ 标题栏（自绘）/ 侧栏导航 / 工作区 / 设置页               │
@@ -137,7 +137,7 @@ d:\Latex-recognition\
     2. 注入模型目录环境变量（`inject_model_dir`）
     3. `ensure_model_dir_for_spawn`：目标目录不存在时尝试创建，`Program Files` 同级等只读区则**提权创建**（UAC 一次，`ensure_dir_elevated` → powershell `Start-Process -Verb RunAs`）
     4. 启动后**循环读启动握手**：跳过 `download_progress`（转发 Channel）直到 `ready`，或返回错误
-    5. worker 的 **stderr 落盘**到 `%APPDATA%\com.axiomlogic.latex\worker.log`（排障关键，不要改成丢弃）
+    5. worker 的 **stderr 落盘**到 `%APPDATA%\com.opentex.latex\worker.log`（排障关键，不要改成丢弃）
   - `model_data_dir(app)`：确定权重目录（见 §6）
   - `recognize()`：写请求行 → 读匹配 `id` 的响应行（期间忽略无关消息）
   - `Drop`：发送 `{"type":"shutdown"}` 并 kill。
@@ -182,8 +182,8 @@ stdout 单行 JSON。分两类消息：
 | 优先级 | 条件 | 目标目录 |
 |---|---|---|
 | 1 | 环境变量 `AXIOM_TEXTELLER_MODEL_DIR` 显式指定 | 该路径（空则下载到它，**不回落捆绑**） |
-| 2 | 正式版（release，非 debug） | **安装目录父级下 `Axiom_Logic_Model`**，如 `D:\Program Files\Axiom_Logic_Model` |
-| 3 | 开发模式（debug）/兜底 | `%APPDATA%\com.axiomlogic.latex\models\texteller` |
+| 2 | 正式版（release，非 debug） | **安装目录父级下 `OpenTeX_Model`**，如 `D:\Program Files\OpenTeX_Model` |
+| 3 | 开发模式（debug）/兜底 | `%APPDATA%\com.opentex.latex\models\texteller` |
 | 4 | 捆绑模型（仅当未走 1-3） | `resources/models/texteller`（随包场景，日常未启用） |
 
 设计原因：
@@ -223,12 +223,12 @@ stdout 单行 JSON。分两类消息：
 ```json
 {
   "version": "0.1.16",
-  "notes": "Axiom Logic 0.1.16",
+  "notes": "OpenTeX 0.1.16",
   "pub_date": "2026-08-31T00:00:00Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "<.sig 文件内容>",
-      "url": "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/Axiom_Logic_0.1.16_x64-setup.exe"
+      "url": "https://github.com/HITM1ss/Latex-recognition/releases/latest/download/OpenTeX_0.1.16_x64-setup.exe"
     }
   }
 }
@@ -251,13 +251,13 @@ stdout 单行 JSON。分两类消息：
 **必须记住的三个坑**：
 1. `nsis.artifactName` **在 Tauri 2 schema 中不存在**（`NsisConfig` 无此字段，任何值都报 anyOf 错）——不要配置它。产物名 = `{productName}_{version}_x64-setup.exe`。
 2. GitHub Releases **资产名不允许空格**（空格自动替换为 `.`）。latest.json 的 url 必须与**实际上传到 GitHub 的名字**一致（CI 已做无空格改名）。
-3. `productName` 已统一为 `Axiom_Logic`（无空格），窗口 `title` 同步；改动它会影响安装路径与更新一致性，**不要随意改回带空格**。
+3. `productName` 已统一为 `OpenTeX`（无空格），窗口 `title` 同步；改动它会影响安装路径与更新一致性，**不要随意改回带空格**。
 
 ## 9. 关键 Tauri 配置（`src-tauri/tauri.conf.json`）
 
 | 字段 | 当前值 | 说明 |
 |---|---|---|
-| `productName` | `Axiom_Logic` | 安装/产物/注册表名，勿改回带空格 |
+| `productName` | `OpenTeX` | 安装/产物/注册表名，勿改回带空格 |
 | `app.windows[0]` | 1000×905，min 700×700，`decorations:false` | 无系统标题栏，自绘 |
 | `bundle.createUpdaterArtifacts` | `true` | 产出可更新签名 |
 | `bundle.resources` | worker.py + requirements.txt | 模型不打包 |
@@ -285,16 +285,16 @@ cargo check --release            # 验证生产分支代码（cfg!(debug_asserti
 
 # 本地打包
 npx tauri build --bundles nsis
-# 产物：src-tauri\target\release\bundle\nsis\Axiom_Logic_{v}_x64-setup.exe (+ .sig)
+# 产物：src-tauri\target\release\bundle\nsis\OpenTeX_{v}_x64-setup.exe (+ .sig)
 ```
 
 **发一个版本**：直接跑 GitHub Actions workflow（推荐，替代本地手动 UPDATING.md 流程）。
 
 ### 排障入口
 
-- worker 日志：`%APPDATA%\com.axiomlogic.latex\worker.log`（Python stderr 全量落这里）
-- 权重目录（正式装）：`<安装目录父级>\Axiom_Logic_Model\`
-- 开发模式权重（debug）：`%APPDATA%\com.axiomlogic.latex\models\texteller\`
+- worker 日志：`%APPDATA%\com.opentex.latex\worker.log`（Python stderr 全量落这里）
+- 权重目录（正式装）：`<安装目录父级>\OpenTeX_Model\`
+- 开发模式权重（debug）：`%APPDATA%\com.opentex.latex\models\texteller\`
 - **本地开发注意**：若 `src-tauri/resources/models/texteller` 存在（捆绑），worker 默认用它加载、永远不会触发下载按钮，难以本地复现下载路径；想测试下载逻辑，临时改名该目录或设 `AXIOM_TEXTELLER_MODEL_DIR`。
 
 ## 11. 环境变量速查

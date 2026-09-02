@@ -1,5 +1,5 @@
 ---
-name: Axiom Logic
+name: OpenTeX
 colors:
   surface: '#f8f9fb'
   surface-dim: '#d9dadc'
@@ -203,4 +203,4 @@ Each card follows the standard panel pattern. The model card uses **radio rows**
 Frosted glass bar (`glass-panel`, `z-30`, `rounded-2xl`) at the bottom of the workspace: primary 复制 LaTeX on the left; 导出为图片 / 发送至 Word / 保存 on the right (labels collapse to icons below `sm`).
 
 ### Mobile TopNavBar
-Absolute, transparent, `pointer-events-none` top bar (64px) shown only below `md`; its brand chip ("Σ Axiom Logic") restores pointer events for tappability without blocking the workspace.
+Absolute, transparent, `pointer-events-none` top bar (64px) shown only below `md`; its brand chip ("Σ OpenTeX") restores pointer events for tappability without blocking the workspace.

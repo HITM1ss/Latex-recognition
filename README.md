@@ -1,4 +1,4 @@
-# Axiom Logic
+# OpenTeX
 
 基于 Tauri 2 + Rust + 本地 TexTeller 的公式识别 MVP。Tauri 前端入口为
 `Frontend/index.html`，保留的原始设计文件为 `Frontend/code.html`；识别请求不会发送到公共远程服务。
@@ -57,7 +57,7 @@ Python 3.11，缺失则静默安装官方解释器；随后自动安装 textelle
 
 模型权重**不随安装包捆绑**：首次启动时 worker 自动从 HuggingFace 仓库
 （`OleehyO/TexTeller`，默认走 hf-mirror 镜像）下载到**安装目录同级**
-（如 `D:\Program Files\Axiom_Logic_Model`），下载完成后离线复用，与应用版本
+（如 `D:\Program Files\OpenTeX_Model`），下载完成后离线复用，与应用版本
 解耦。若需完全离线分发，可把模型目录拷入
 `src-tauri/resources/models/texteller` 后调整 `tauri.conf.json` 的 resources。
 
