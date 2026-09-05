@@ -1,7 +1,7 @@
 # OpenTeX — 架构与接手说明
 
 > 本文档面向**其他 AI / 开发者**，目标是让人在**不依赖原作者**的情况下快速理解、修改、构建和发布本项目。
-> 请以**当前仓库代码**为准；`README.md` 中与本文冲突的描述（如模型目录、下载去向）是早期版本的残留，已被下述实现取代。
+> 请以**当前仓库代码**为准；其他文档（README / API / UPDATING）如与本文冲突，以本文与代码为准。
 
 ## 0. 一句话概述
 
@@ -15,7 +15,7 @@
 
 - 调用链：`前端 → Tauri 命令(Rust) → stdin/stdout JSONL → Python worker → TexTeller → LaTeX 原路返回`
 
-识别请求**不经过任何远程服务**。唯一联网场景是「首次下载模型权重」和「检查软件更新」。
+识别请求**不经过任何远程服务**。联网场景集中在「下载权重」一条链路上：首次点「下载权重」会先自动准备运行环境（从 python.org 静默安装 Python 3.11、pip 安装 torch CPU + texteller），再从 HuggingFace 镜像下载权重；此外只有「检查/下载软件更新」会联网。
 
 ## 1. 技术栈
 
@@ -74,7 +74,7 @@ d:\Latex-recognition\
 │   ├── code.html               # 早期设计备份（可忽略）
 │   └── DESIGN.md               # 早期设计说明（可能过时）
 ├── docs/
-│   ├── API.md                  # 识别 IPC 协议（旧版速览）
+│   ├── API.md                  # IPC 协议（识别 + 命令速览）
 │   ├── UPDATING.md             # 手动发版流程（CI 化后已简化）
 │   └── ARCHITECTURE.md         # 本文档
 ├── scripts/
@@ -110,33 +110,36 @@ d:\Latex-recognition\
 | `<header id="titlebar">` | 自绘标题栏（`decorations:false` 无系统栏），拖拽区 + 最小化/关闭                                   |                                                         |
 | `<nav>`                  | 左侧 80px 导航：工作区 / 设置 / 升级按钮（点击升级 = 切到设置页并触发检查更新）                                |                                                         |
 | `<main>` 工作区             | 拖放/粘贴图片 → 识别 → 原始图 + KaTeX 预览 + LaTeX 源码编辑 + 底部操作栏                             |                                                         |
-| `<main>` 设置页             | 「识别模型」动态卡片（`renderModels`）+ 「软件更新」卡片                                           |                                                         |
-| JS 函数 `renderModels()`   | 从 `list_models` 拉模型列表动态渲染：就绪 → 单选点 + 删除图标按钮；未就绪 → 「下载权重」按钮（实时进度/速度）            |                                                         |
-| JS `recognize()`         | `invoke("recognize_image", {request})` → `updateLatex` → KaTeX `renderPreview` |                                                         |
-| JS `updateCard` 模块       | 检查更新 \`plugin:updater                                                          | check`→ 下载`download\_and\_install\`（Channel 进度）→ 静默安装重启 |
+| `<main>` 设置页             | 「识别模型」动态卡片（`renderModels`）+ 「软件更新」卡片 + 4 张占位卡片                                           |                                                         |
+| JS 函数 `renderModels()`   | 从 `list_models` 拉模型列表动态渲染：就绪 → 单选点 + 打开权重目录/删除按钮；未就绪 → 「下载权重」按钮（实时进度/速度）            |                                                         |
+| JS `recognizeDataUrl()`         | `invoke("recognize_image", {request})` → `updateLatex` → KaTeX `renderPreview` |                                                         |
+| 更新卡片 `initUpdateCard`    | 检查更新 `plugin:updater\|check` → 下载 `download_and_install`（Channel 进度）→ 静默安装重启 |
 | KaTeX                    | 识别/编辑结果去掉 `\[...\]` 后渲染；不支持的命令以红色原文回退（`throwOnError:false`）                    |                                                         |
 
 **前端与 Rust 的命令映射**：
 
 | invoke            | Rust 命令                     | 备注                                                |
 | ----------------- | --------------------------- | ------------------------------------------------- |
-| `recognize_image` | `commands::recognize_image` | 参数 `{request}`＝`{imageBase64,mime,model}`         |
+| `recognize_image` | `commands::recognize_image` | 参数 `{request}`＝`{image_base64,mime,model}`         |
 | `list_models`     | `commands::list_models`     | 返回 `ModelInfo[]`（id/label/description/icon/ready） |
-| `download_model`  | `commands::download_model`  | 参数 `{id,onEvent:Channel}`；Channel 接收下载进度          |
+| `download_model`  | `commands::download_model`  | 参数 `{id,onEvent:Channel}`；Channel 接收环境准备阶段与下载进度          |
 | `delete_model`    | `commands::delete_model`    | 停 worker → 删目录，内置模型拒绝                             |
-| `model_status`    | `commands::model_status`    | "ready"/"cold"                                    |
+| `open_model_dir` | `commands::open_model_dir` | 打开权重目录（前端「打开权重文件夹」按钮），返回路径 |
+| `model_status`    | `commands::model_status`    | `"ready"`/`"cold"`（当前前端未调用）                                    |
 
 ### 4.2 Rust 层（`src-tauri/src/`）
 
-- **lib.rs**：挂载 `tauri_plugin_updater`，注册 5 个命令。
+- **lib.rs**：挂载 `tauri_plugin_updater`，注册 6 个命令。
 
 - **commands.rs**：
 
   - `list_models`：当前只登记 `texteller` 一条（`ready` 由 `worker::texteller_ready` 动态判定）。**新增模型只需在这里加一条 ModelInfo**。
 
-  - `download_model(id, on_event: Channel<DownloadProgress>)`：确保 worker 存活；spawn 时把进度 Channel 传入，worker 启动阶段的 `download_progress` 消息会转发到该 Channel。
+  - `download_model(id, on_event: Channel<DownloadProgress>)`：先 `ensure_runtime`（缺 Python 3.11 / torch / texteller 时自动安装，阶段文字同样走该 Channel），再确保 worker 存活；spawn 时把进度 Channel 传入，worker 启动阶段的 `download_progress` 消息会转发到该 Channel。
 
   - `delete_model`：若存在捆绑模型则拒绝；否则先 `*state.worker.lock() = None`（触发 Drop → kill 子进程释放文件锁），再 `remove_dir_all(模型目录)`，Windows 句柄延迟用 300ms×10 重试兜底。
+
+  - `open_model_dir`：打开（不存在则创建）模型权重目录并返回路径，前端「打开权重文件夹」按钮调用。
 
   - `recognize_image`：懒拉起 worker（进程死了自动重启）→ 同步等待匹配 `id` 的响应。
 
@@ -194,7 +197,7 @@ stdout 单行 JSON。分两类消息：
 
 - 错误码：`invalid_image` / `model_unavailable` / `inference_failed` / `no_formula` / `invalid_request`。
 
-- 详情见 `docs/API.md`（其"model 字段说明"已过时，现在 `model` 是模型 id，固定 `texteller`）。
+- 详情见 `docs/API.md`（`model` 固定为 `texteller`，并含其余 IPC 命令速览）。
 
 ## 6. 模型权重体系（重点，历史坑最多）
 
@@ -354,14 +357,14 @@ npx tauri build --bundles nsis
 5. **`createUpdaterArtifacts`** **+ 签名 Secrets 缺一不可**，否则 CI 找不到 `.sig` 报错。
 6. **GitHub 资产名空格→点**；latest.json 的 url 必须 = 资产实际名（CI 已处理）。
 7. **Tauri schema 不支持** **`nsis.artifactName`**；`bundle.windows.nsis` 只可用真字段（`installMode` 等）。
-8. **模型与密钥都是 gitignore**；换机器先跑 `prepare-local-model.ps1` 或点应用内下载；密钥重生成需同时更新 `tauri.conf.json` 的 `pubkey` 和 Secrets。
-9. **KaTeX 是 CDN**：若做完全断网安装包，需把 Tailwind/KaTeX/图标/字体本地化（当前通过 jsdelivr + 系统字体）。
+8. **模型与密钥都是 gitignore**；换机器先跑 `prepare-local-model.ps1`（注意：脚本走官方端点全量下载约 6GB，国内建议先设 `HF_ENDPOINT=https://hf-mirror.com`，或改用应用内「下载权重」的最小文件集路径）；密钥重生成需同时更新 `tauri.conf.json` 的 `pubkey` 和 Secrets。
+9. **KaTeX 是 CDN**：若做完全断网安装包，需把 Tailwind/KaTeX/图标/字体本地化（当前 Tailwind 来自 cd.tailwindcss.com，KaTeX 来自 cdn.jsdelivr.net，Inter/JetBrains Mono/Material Symbols 字体来自 fonts.googleapis.com）。
 
 ## 13. 主要代码索引
 
 | 需求           | 文件/函数                                                                                                           |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |
-| 前端全部 UI/逻辑   | `Frontend/index.html`（renderModels / recognize / renderPreview / updateCard / 删除按钮 CSS）                         |
+| 前端全部 UI/逻辑   | `Frontend/index.html`（renderModels / recognizeDataUrl / renderPreview / initUpdateCard / 删除按钮 CSS）                         |
 | IPC 命令       | `src-tauri/src/commands.rs`                                                                                     |
 | worker 进程与握手 | `src-tauri/src/worker.rs`（spawn / recognize / model\_data\_dir / ensure\_dir\_elevated / texteller\_ready）      |
 | 模型加载与下载      | `resources/formula_worker.py`（main / \_model\_root / \_download\_model / \_stream\_download / \_emit\_progress） |

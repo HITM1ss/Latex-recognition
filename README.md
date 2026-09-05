@@ -8,9 +8,9 @@
 - 选择、拖拽或粘贴公式图片
 - 常驻 Python worker，一次加载 TexTeller 模型后重复识别
 - Rust/Tauri 通过 JSONL worker 协议调用本地推理
-- LaTeX 编辑、复制、SVG 导出、本地历史记录
+- LaTeX 编辑、复制 LaTeX / 复制 MathML、本地历史记录
 - 设置页软件更新（tauri-plugin-updater + GitHub Releases，见 docs/UPDATING.md）
-- 设置页「识别模型」卡片动态渲染模型列表，支持下载/删除权重
+- 设置页「识别模型」卡片动态渲染模型列表，支持下载/删除权重、打开权重目录
 
 ## 开发环境
 
@@ -28,6 +28,10 @@
 ```powershell
 .\scripts\prepare-local-model.ps1
 ```
+
+> 注意：该脚本走官方 `huggingface.co` 端点做**全量** `snapshot_download`（约 6GB，
+> 含 onnx 变体等非必需文件）。国内网络建议先设 `$env:HF_ENDPOINT = "https://hf-mirror.com"`
+> 再运行；日常更推荐直接用应用设置页的「下载权重」按钮（最小文件集 + 镜像 + 断点续传）。
 
 开发启动：
 
