@@ -911,8 +911,8 @@ async function renderModels() {
                 const got = msg.downloaded || 0;
                 if (total > 0) {
                   const pct = Math.min(100, Math.floor((got / total) * 100));
-                  const speed = msg.speed_bps > 0
-                    ? (msg.speed_bps / 1048576).toFixed(1) + ' MB/s'
+                  const speed = msg.speedBps > 0
+                    ? (msg.speedBps / 1048576).toFixed(1) + ' MB/s'
                     : '';
                   download.textContent = speed
                     ? pct + '% · ' + speed
