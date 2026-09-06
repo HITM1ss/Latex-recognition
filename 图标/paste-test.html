@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>粘贴片段独立验证</title>
+<style>
+  body{background:#f4f5f7;font-family:"Segoe UI",system-ui,sans-serif;padding:48px;display:flex;gap:48px;align-items:center}
+  .icon-host{display:inline-flex;padding:14px;border:1.5px dashed #9aa3ad;border-radius:14px;color:#1b1f24;cursor:pointer;background:#fff}
+  p{color:#5f6672;font-size:13px}
+</style>
+</head>
+<body>
+  <div class="icon-host">
+    <!-- 方框悬停发射+补位：双箭循环，纯 CSS 双向缓动，可逆，无 JS -->
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <defs><clipPath id="sqClip"><rect x="3" y="3" width="18" height="18" rx="2"/></clipPath></defs>
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <g clip-path="url(#sqClip)"><g class="sq-arrow"><path d="m8 12 4-4 4 4"/><path d="M12 8v8"/><g transform="translate(0 24)"><path d="m8 12 4-4 4 4"/><path d="M12 8v8"/></g></g></g>
+    </svg>
+    <style>
+      .sq-arrow{transform:translateY(0);transition:transform .45s cubic-bezier(.2,1.2,.3,1)}
+      .icon-host:hover .sq-arrow{transform:translateY(-24px);transition:transform .35s cubic-bezier(.45,0,.55,1)}  /* .icon-host 换成你的悬停宿主 */
+    </style>
+  </div>
+  <p>← 悬停左侧按钮：箭头发射，下方补位；移出弹回</p>
+</body>
+</html>
