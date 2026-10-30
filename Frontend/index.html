@@ -414,13 +414,65 @@
 <button id="updateButton" class="hidden bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-lg text-[13px] font-medium shrink-0 disabled:opacity-60 disabled:cursor-not-allowed">下载并安装</button>
 </div>
 </div>
-<!-- 占位设置项 2 -->
-<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
+<!-- 自定义 AI 模型 -->
+<div id="customAiCard" class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
 <div class="px-5 h-11 border-b border-outline-variant/30 flex items-center justify-between">
-<span class="font-semibold text-[13px] text-on-surface tracking-wide">设置项</span>
-<span class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">2</span>
+<span class="font-semibold text-[13px] text-on-surface tracking-wide">配置自定义 AI 模型</span>
+<span id="customAiBadge" class="text-[11px] font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">未配置</span>
 </div>
-<div class="px-5 py-6 flex items-center justify-center text-[13px] text-on-surface-variant">内容待定</div>
+<form id="customAiForm" class="px-5 py-4" autocomplete="off">
+<p class="text-[12px] text-on-surface-variant mb-4 leading-5">支持兼容 OpenAI Responses 或 Chat Completions 的视觉模型。选择自定义模型识别时，公式图片会发送到你配置的服务。</p>
+<fieldset id="customAiFields" class="min-w-0 space-y-4" disabled>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<label class="flex flex-col gap-1.5 md:col-span-2 text-[13px] font-medium">接口协议
+<select id="customAiApiFormat" class="w-full rounded-xl border-outline-variant/60 bg-surface text-[13px] font-normal focus:border-primary focus:ring-primary">
+<option value="responses" selected>Responses API</option>
+<option value="chat-completions">Chat Completions API</option>
+</select>
+<span class="text-[11px] font-normal text-on-surface-variant">按服务支持的接口选择；修改协议后可先测试，再保存使用。</span>
+</label>
+<label class="flex flex-col gap-1.5 md:col-span-2 text-[13px] font-medium">接口地址
+<input id="customAiBaseUrl" type="url" required spellcheck="false" placeholder="https://api.example.com/v1" class="w-full rounded-xl border-outline-variant/60 bg-surface text-[13px] font-normal focus:border-primary focus:ring-primary">
+<span class="text-[11px] font-normal text-on-surface-variant">请按服务文档填写完整端点；支持 /responses、/chat/completions</span>
+</label>
+<div class="flex flex-col gap-1.5 md:col-span-2">
+<label for="customAiKey" class="text-[13px] font-medium">API Key</label>
+<div class="flex gap-2">
+<input id="customAiKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="服务需要鉴权时填写" class="min-w-0 flex-1 rounded-xl border-outline-variant/60 bg-surface text-[13px] focus:border-primary focus:ring-primary">
+<button id="customAiToggleKey" type="button" aria-controls="customAiKey" aria-pressed="false" class="px-3 py-2 rounded-xl border border-outline-variant/60 text-[12px] hover:bg-surface-container">显示</button>
+<button id="customAiClearKey" type="button" class="px-3 py-2 rounded-xl border border-outline-variant/60 text-[12px] hover:bg-surface-container disabled:opacity-40">清除密钥</button>
+</div>
+<span id="customAiKeyHint" class="text-[11px] text-on-surface-variant">密钥保存在此设备，不写入浏览器存储。</span>
+</div>
+<div class="flex flex-col gap-1.5 md:col-span-2">
+<label for="customAiModel" class="text-[13px] font-medium">模型名称</label>
+<div class="flex gap-2">
+<input id="customAiModel" type="text" list="customAiModelOptions" required spellcheck="false" placeholder="填写支持图片输入的模型 ID" class="min-w-0 flex-1 rounded-xl border-outline-variant/60 bg-surface text-[13px] focus:border-primary focus:ring-primary">
+<datalist id="customAiModelOptions"></datalist>
+<button id="customAiFetchModels" type="button" class="px-3 py-2 rounded-xl border border-outline-variant/60 text-[12px] hover:bg-surface-container whitespace-nowrap">获取模型</button>
+</div>
+<span class="text-[11px] text-on-surface-variant">模型列表可能包含纯文本模型；请选择支持图片输入的模型，也可直接手填。</span>
+</div>
+<label class="flex flex-col gap-1.5 text-[13px] font-medium">温度
+<input id="customAiTemperature" type="number" min="0" max="2" step="0.1" value="0" required disabled aria-describedby="customAiTemperatureHint" class="w-full rounded-xl border-outline-variant/60 bg-surface text-[13px] font-normal focus:border-primary focus:ring-primary disabled:bg-surface-container disabled:text-on-surface-variant disabled:cursor-not-allowed">
+<span id="customAiTemperatureHint" class="text-[11px] font-normal text-on-surface-variant">Responses 使用模型默认温度。</span>
+</label>
+<label class="flex flex-col gap-1.5 text-[13px] font-medium">超时（秒）
+<input id="customAiTimeout" type="number" min="10" max="300" step="1" value="90" required class="w-full rounded-xl border-outline-variant/60 bg-surface text-[13px] font-normal focus:border-primary focus:ring-primary">
+</label>
+<label class="flex flex-col gap-1.5 md:col-span-2 text-[13px] font-medium">识别提示词
+<textarea id="customAiPrompt" rows="3" maxlength="8000" placeholder="留空使用默认的公式识别提示词" class="w-full resize-y rounded-xl border-outline-variant/60 bg-surface text-[13px] font-normal leading-5 focus:border-primary focus:ring-primary"></textarea>
+</label>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<button id="customAiSave" type="submit" class="px-4 py-2 rounded-xl border border-outline-variant/60 text-[13px] font-medium hover:bg-surface-container disabled:opacity-50">保存配置</button>
+<button id="customAiSaveAndUse" type="button" class="px-4 py-2 rounded-xl bg-primary text-on-primary text-[13px] font-medium hover:bg-primary/90 disabled:opacity-50">保存并使用</button>
+<button id="customAiTest" type="button" class="px-4 py-2 rounded-xl bg-primary/10 text-primary text-[13px] font-medium hover:bg-primary/20 disabled:opacity-50">测试连接</button>
+<span class="text-[11px] text-on-surface-variant">测试使用内置公式图片，可能产生少量调用费用。</span>
+</div>
+</fieldset>
+<p id="customAiStatus" role="status" aria-live="polite" class="mt-3 min-h-[20px] text-[12px] text-on-surface-variant break-words">正在读取配置…</p>
+</form>
 </div>
 <!-- 占位设置项 3 -->
 <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm">
@@ -557,6 +609,7 @@ function navState(name){
   document.getElementById('navSettings').classList.toggle('active', name === 'settings');
 }
 function activateModel(row){
+  if (!row) return;
   document.querySelectorAll('.model-row').forEach(r=>{
     const isSel = r === row;
     r.classList.toggle('active', isSel);
@@ -576,6 +629,11 @@ let selectedModel = localStorage.getItem('axiom.model') || 'texteller';
 let currentImageDataUrl = '';
 let currentLatex = '';
 let toastTimer = null;
+let recognitionBusy = false;
+let customAiBusy = false;
+let customAiLoading = true;
+let customAiHasKey = false;
+let customAiClearKeyPending = false;
 
 function localInvoke(command, args) {
   const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
@@ -657,24 +715,232 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function updateInteractionLocks() {
+  const dropZone = document.getElementById('dropZone');
+  if (dropZone) {
+    dropZone.setAttribute('aria-disabled', String(recognitionBusy));
+    dropZone.classList.toggle('opacity-60', recognitionBusy);
+    dropZone.classList.toggle('cursor-wait', recognitionBusy);
+  }
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) fileInput.disabled = recognitionBusy;
+  const source = document.getElementById('latexSource');
+  if (source) source.readOnly = recognitionBusy;
+  document.querySelectorAll('.model-row').forEach((row) => {
+    row.setAttribute('aria-disabled', String(recognitionBusy));
+    row.querySelectorAll('button').forEach((button) => { button.disabled = recognitionBusy; });
+  });
+  const fields = document.getElementById('customAiFields');
+  if (fields) fields.disabled = customAiLoading || customAiBusy || recognitionBusy;
+  const temperature = document.getElementById('customAiTemperature');
+  const usesResponses = document.getElementById('customAiApiFormat').value === 'responses';
+  if (temperature) temperature.disabled = usesResponses;
+  document.getElementById('customAiTemperatureHint').textContent = usesResponses
+    ? 'Responses 使用模型默认温度；切回 Chat Completions 可编辑原值。'
+    : 'Chat Completions 使用此温度值，范围为 0 到 2。';
+  const clearKey = document.getElementById('customAiClearKey');
+  if (clearKey) clearKey.disabled = !customAiHasKey && !document.getElementById('customAiKey').value;
+}
+
+function customAiMessage(message, isError = false) {
+  const status = document.getElementById('customAiStatus');
+  status.textContent = message;
+  status.classList.toggle('text-error', isError);
+  status.classList.toggle('text-on-surface-variant', !isError);
+}
+
+function customAiError(error) {
+  let message = (error && error.message) || String(error);
+  const key = document.getElementById('customAiKey').value.trim();
+  if (key) message = message.split(key).join('[密钥已隐藏]');
+  return message;
+}
+
+function updateCustomAiKeyHint() {
+  const key = document.getElementById('customAiKey');
+  key.placeholder = customAiHasKey && !customAiClearKeyPending ? '已保存密钥；留空保留，输入新值替换' : '服务需要鉴权时填写';
+  document.getElementById('customAiKeyHint').textContent = customAiClearKeyPending
+    ? '已标记清除密钥，保存后生效。'
+    : customAiHasKey
+      ? '此设备已保存密钥，不会回显。更换服务地址时请重新输入对应密钥。'
+      : '密钥保存在此设备，不写入浏览器存储。本机免鉴权服务可留空。';
+  updateInteractionLocks();
+}
+
+function applyCustomAiConfig(config) {
+  document.getElementById('customAiApiFormat').value = config.apiFormat || 'chat-completions';
+  document.getElementById('customAiBaseUrl').value = config.baseUrl || '';
+  document.getElementById('customAiModel').value = config.model || '';
+  document.getElementById('customAiPrompt').value = config.prompt || '';
+  document.getElementById('customAiTemperature').value = config.temperature ?? 0;
+  document.getElementById('customAiTimeout').value = config.timeoutSeconds ?? 90;
+  const key = document.getElementById('customAiKey');
+  key.value = '';
+  key.type = 'password';
+  document.getElementById('customAiToggleKey').textContent = '显示';
+  document.getElementById('customAiToggleKey').setAttribute('aria-pressed', 'false');
+  customAiHasKey = Boolean(config.hasApiKey);
+  customAiClearKeyPending = false;
+  document.getElementById('customAiBadge').textContent = config.baseUrl && config.model ? '已配置' : '未配置';
+  updateCustomAiKeyHint();
+}
+
+function readCustomAiConfig(requireModel = true) {
+  const apiFormat = document.getElementById('customAiApiFormat').value;
+  const baseUrl = document.getElementById('customAiBaseUrl').value.trim();
+  const model = document.getElementById('customAiModel').value.trim();
+  const temperatureText = document.getElementById('customAiTemperature').value.trim();
+  const timeoutText = document.getElementById('customAiTimeout').value.trim();
+  let temperature = Number(temperatureText);
+  const timeoutSeconds = Number(timeoutText);
+  if (!['responses', 'chat-completions'].includes(apiFormat)) throw new Error('请选择 Responses 或 Chat Completions 接口协议。');
+  if (!baseUrl) throw new Error('请填写接口地址。');
+  let address;
+  try { address = new URL(baseUrl); } catch (_) { throw new Error('接口地址无效，请填写包含 https:// 的完整地址。'); }
+  const isLocal = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(address.hostname.toLowerCase());
+  if (address.protocol !== 'https:' && !(address.protocol === 'http:' && isLocal)) {
+    throw new Error('远程服务请使用 HTTPS；HTTP 仅支持 localhost、127.0.0.1 或 ::1。');
+  }
+  if (address.username || address.password || address.search || address.hash) {
+    throw new Error('接口地址不能包含用户名、密码、查询参数或片段，请将密钥填写到 API Key。');
+  }
+  if (requireModel && !model) throw new Error('请填写支持图片输入的模型名称。');
+  if (model.length > 512) throw new Error('模型名称过长。');
+  if (!temperatureText || !Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+    if (apiFormat === 'chat-completions') throw new Error('温度必须为 0 到 2 之间的数值。');
+    temperature = 0;
+  }
+  if (!timeoutText || !Number.isInteger(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 300) {
+    throw new Error('超时必须为 10 到 300 之间的整数秒。');
+  }
+  const apiKey = document.getElementById('customAiKey').value.trim();
+  return {
+    apiFormat, baseUrl, model, temperature, timeoutSeconds,
+    prompt: document.getElementById('customAiPrompt').value.trim(),
+    apiKey: apiKey || undefined,
+    clearApiKey: customAiClearKeyPending,
+  };
+}
+
+async function runCustomAiAction(kind) {
+  if (customAiBusy || customAiLoading || recognitionBusy) return;
+  let config;
+  try { config = readCustomAiConfig(kind !== 'models'); }
+  catch (error) { customAiMessage(customAiError(error), true); return; }
+  customAiBusy = true;
+  document.getElementById('customAiForm').setAttribute('aria-busy', 'true');
+  updateInteractionLocks();
+  customAiMessage(kind === 'models' ? '正在获取模型列表…' : kind === 'test' ? '正在使用内置公式图片测试识别…' : '正在保存配置…');
+  try {
+    if (kind === 'models') {
+      const models = await localInvoke('list_custom_ai_models', { config });
+      const options = document.getElementById('customAiModelOptions');
+      options.replaceChildren();
+      const names = Array.isArray(models) ? models.filter((name) => typeof name === 'string') : [];
+      names.forEach((name) => {
+        const option = document.createElement('option');
+        option.value = name;
+        options.appendChild(option);
+      });
+      customAiMessage(names.length ? `已获取 ${names.length} 个模型，点击模型名称输入框选择，也可直接手填。` : '服务未返回模型列表，可直接填写模型名称。');
+    } else if (kind === 'test') {
+      const result = await localInvoke('test_custom_ai_config', { config });
+      const elapsed = Number.isFinite(result && result.elapsedMs) ? `（${result.elapsedMs} ms）` : '';
+      customAiMessage(((result && result.message) || '图片识别测试通过。') + elapsed + ' 测试不会保存配置。');
+    } else {
+      const temperatureDraft = document.getElementById('customAiTemperature').value;
+      const saved = await localInvoke('save_custom_ai_config', { config });
+      applyCustomAiConfig(saved);
+      // Responses 不使用温度；保留草稿供切回 Chat 时继续编辑和校验。
+      if (config.apiFormat === 'responses') document.getElementById('customAiTemperature').value = temperatureDraft;
+      const models = await renderModels();
+      if (kind === 'use') {
+        const custom = Array.isArray(models) && models.find((model) => model.id === 'custom-ai');
+        if (!custom || !custom.ready) throw new Error('配置已保存，但尚未就绪；远程服务需要填写 API Key 后才能使用。');
+        selectedModel = 'custom-ai';
+        localStorage.setItem('axiom.model', selectedModel);
+        activateModel(document.querySelector('[data-model="custom-ai"]'));
+      }
+      customAiMessage(kind === 'use' ? '配置已保存，当前识别模型已切换为自定义 AI。' : '配置已保存。可在上方“识别模型”中选择，或点击“保存并使用”。');
+      showToast(kind === 'use' ? '已保存并使用自定义 AI 模型' : '自定义 AI 配置已保存');
+    }
+  } catch (error) {
+    customAiMessage(customAiError(error), true);
+  } finally {
+    customAiBusy = false;
+    document.getElementById('customAiForm').setAttribute('aria-busy', 'false');
+    updateInteractionLocks();
+  }
+}
+
+function focusCustomAiConfig() {
+  showView('settings');
+  document.getElementById('customAiCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('customAiBaseUrl').focus({ preventScroll: true });
+}
+
+async function initCustomAiConfig() {
+  const form = document.getElementById('customAiForm');
+  form.addEventListener('submit', (event) => { event.preventDefault(); runCustomAiAction('save'); });
+  document.getElementById('customAiSaveAndUse').addEventListener('click', () => runCustomAiAction('use'));
+  document.getElementById('customAiTest').addEventListener('click', () => runCustomAiAction('test'));
+  document.getElementById('customAiFetchModels').addEventListener('click', () => runCustomAiAction('models'));
+  document.getElementById('customAiToggleKey').addEventListener('click', () => {
+    const key = document.getElementById('customAiKey');
+    const visible = key.type === 'password';
+    key.type = visible ? 'text' : 'password';
+    document.getElementById('customAiToggleKey').textContent = visible ? '隐藏' : '显示';
+    document.getElementById('customAiToggleKey').setAttribute('aria-pressed', String(visible));
+  });
+  document.getElementById('customAiClearKey').addEventListener('click', () => {
+    document.getElementById('customAiKey').value = '';
+    customAiClearKeyPending = true;
+    document.getElementById('customAiBadge').textContent = '未保存';
+    updateCustomAiKeyHint();
+    customAiMessage('密钥已标记清除，请保存配置使其生效。');
+  });
+  form.addEventListener('input', (event) => {
+    if (event.target.id === 'customAiKey' && event.target.value.trim()) customAiClearKeyPending = false;
+    document.getElementById('customAiBadge').textContent = '未保存';
+    updateCustomAiKeyHint();
+    customAiMessage('配置已修改，保存后用于识别；也可先测试连接。');
+  });
+  document.getElementById('customAiApiFormat').addEventListener('change', () => {
+    document.getElementById('customAiBadge').textContent = '未保存';
+    updateInteractionLocks();
+    customAiMessage('接口协议已修改，可先测试连接；保存后用于识别。');
+  });
+  try {
+    applyCustomAiConfig(await localInvoke('get_custom_ai_config'));
+    customAiMessage('保存后在上方选择自定义模型，或点击“保存并使用”。');
+  } catch (error) {
+    customAiMessage('读取配置失败：' + customAiError(error), true);
+  } finally {
+    customAiLoading = false;
+    updateInteractionLocks();
+  }
+}
+
 async function recognizeDataUrl(dataUrl, mime) {
-  setRecognitionStatus('正在加载本地模型…', 'busy');
+  const requestModel = selectedModel;
+  const isCustom = requestModel === 'custom-ai';
+  setRecognitionStatus(isCustom ? '正在调用自定义 AI 模型…' : '正在加载本地模型…', 'busy');
   try {
     const result = await localInvoke('recognize_image', {
       request: {
         image_base64: dataUrl,
         mime: mime || null,
-        model: selectedModel,
+        model: requestModel,
       },
     });
     if (!result || !result.success) {
-      const message = result && result.error ? result.error.message : '本地模型没有返回结果';
+      const message = result && result.error ? result.error.message : '模型没有返回结果';
       throw new Error(message);
     }
     updateLatex(result.latex || '');
     const elapsed = Number.isFinite(result.elapsed_ms) ? ` · ${result.elapsed_ms} ms` : '';
     setRecognitionStatus('识别完成' + elapsed, 'idle');
-    showToast('已使用 TexTeller 本地模型完成识别');
+    showToast(isCustom ? '已使用自定义 AI 模型完成识别' : '已使用 TexTeller 本地模型完成识别');
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     setRecognitionStatus('识别失败', 'error');
@@ -684,6 +950,10 @@ async function recognizeDataUrl(dataUrl, mime) {
 
 async function handleImageFile(file) {
   if (!file) return;
+  if (recognitionBusy || customAiBusy) {
+    showToast('请等待当前任务完成后再识别图片');
+    return;
+  }
   if (!file.type || !file.type.startsWith('image/')) {
     showToast('请选择 PNG、JPG、WebP 或 BMP 图片', true);
     return;
@@ -692,6 +962,8 @@ async function handleImageFile(file) {
     showToast('图片不能超过 12 MB', true);
     return;
   }
+  recognitionBusy = true;
+  updateInteractionLocks();
   try {
     const dataUrl = await readFileAsDataUrl(file);
     currentImageDataUrl = dataUrl;
@@ -699,17 +971,20 @@ async function handleImageFile(file) {
     const placeholder = document.getElementById('originalPlaceholder');
     const badge = document.getElementById('imageSizeBadge');
     if (image) {
-      image.src = dataUrl;
-      image.classList.remove('hidden');
       image.onload = () => {
         if (badge) badge.textContent = `${image.naturalWidth} × ${image.naturalHeight} px`;
       };
+      image.src = dataUrl;
+      image.classList.remove('hidden');
     }
     if (placeholder) placeholder.classList.add('hidden');
     await recognizeDataUrl(dataUrl, file.type);
   } catch (error) {
     setRecognitionStatus('读取失败', 'error');
     showToast(error.message || '读取图片失败', true);
+  } finally {
+    recognitionBusy = false;
+    updateInteractionLocks();
   }
 }
 
@@ -807,7 +1082,7 @@ async function renderModels() {
   }
 
   const saved = localStorage.getItem('axiom.model');
-  if (!saved || !models.some((m) => m.id === saved)) {
+  if (!saved || !models.some((m) => m.id === saved && (m.id !== 'custom-ai' || m.ready))) {
     selectedModel = models[0] ? models[0].id : 'texteller';
     localStorage.setItem('axiom.model', selectedModel);
   } else {
@@ -815,34 +1090,57 @@ async function renderModels() {
   }
 
   models.forEach((m) => {
-    const row = document.createElement('button');
-    row.type = 'button';
+    const row = document.createElement('div');
     row.className = 'model-row flex items-center justify-between gap-4 w-full px-5 py-4 text-left transition-colors hover:bg-surface-container/50';
     row.dataset.model = m.id;
     row.dataset.label = m.label;
     row.setAttribute('role', 'radio');
+    row.tabIndex = m.ready ? 0 : -1;
     row.setAttribute('aria-checked', m.id === selectedModel ? 'true' : 'false');
     if (m.id === selectedModel) row.classList.add('active');
 
     const left = document.createElement('span');
     left.className = 'flex items-center gap-3';
-    left.innerHTML =
-      '<span class="material-symbols-outlined text-[22px] ' + (m.ready ? 'text-primary/70' : 'text-on-surface-variant') + '">' + m.icon + '</span>' +
-      '<span class="flex flex-col gap-1">' +
-        '<span class="font-medium text-[14px] text-on-surface">' + m.label + '</span>' +
-        '<span class="text-[12px] text-on-surface-variant">' + m.description + '</span>' +
-      '</span>';
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined text-[22px] ' + (m.ready ? 'text-primary/70' : 'text-on-surface-variant');
+    icon.textContent = m.icon || 'smart_toy';
+    const labels = document.createElement('span');
+    labels.className = 'flex flex-col gap-1';
+    const label = document.createElement('span');
+    label.className = 'font-medium text-[14px] text-on-surface';
+    label.textContent = m.label;
+    const description = document.createElement('span');
+    description.className = 'text-[12px] text-on-surface-variant';
+    description.textContent = m.description;
+    labels.append(label, description);
+    left.append(icon, labels);
     row.appendChild(left);
 
     if (m.ready) {
-      const right = document.createElement('span');
-      right.className = 'flex items-center gap-1 ml-auto shrink-0';
-      row.addEventListener('click', () => {
+      const select = () => {
+        if (recognitionBusy || customAiBusy) return;
         selectedModel = m.id;
         localStorage.setItem('axiom.model', selectedModel);
         activateModel(row);
+      };
+      row.classList.add('cursor-pointer');
+      row.addEventListener('click', select);
+      row.addEventListener('keydown', (event) => {
+        if (event.target !== row) return;
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); }
       });
-
+    }
+    if (m.id === 'custom-ai') {
+      const configure = document.createElement('button');
+      configure.type = 'button';
+      configure.className = 'text-[12px] font-medium text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-full shrink-0';
+      configure.textContent = '配置';
+      configure.addEventListener('click', (event) => { event.stopPropagation(); focusCustomAiConfig(); });
+      row.appendChild(configure);
+    } else
+    if (m.ready) {
+      const right = document.createElement('span');
+      right.className = 'flex items-center gap-1 ml-auto shrink-0';
       const openBtn = document.createElement('button');
       openBtn.type = 'button';
       openBtn.className = 'open-folder-btn flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors shrink-0';
@@ -947,6 +1245,8 @@ async function renderModels() {
     const active = models.find((m) => m.id === selectedModel);
     badge.textContent = active ? active.label : '未选择';
   }
+  updateInteractionLocks();
+  return models;
 }
 
 // 侧栏 Logo：$f_x$ 数学符号（KaTeX 渲染，颜色继承父级 text-primary）
@@ -1036,15 +1336,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const source = document.getElementById('latexSource');
 
   renderModels();
+  initCustomAiConfig();
   initBrandSymbol();
   initScanTextIcon();
 
   if (dropZone && fileInput) {
-    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('click', () => { if (!recognitionBusy && !customAiBusy) fileInput.click(); });
     dropZone.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        fileInput.click();
+        if (!recognitionBusy && !customAiBusy) fileInput.click();
       }
     });
     dropZone.addEventListener('dragover', (event) => {
@@ -1064,6 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.addEventListener('paste', (event) => {
+    if (!document.getElementById('settingsView').classList.contains('hidden')) return;
     const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
     const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
     if (imageItem) {

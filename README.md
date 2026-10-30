@@ -1,7 +1,8 @@
 # OpenTeX
 
 基于 Tauri 2 + Rust + 本地 TexTeller 的公式识别 MVP。Tauri 前端入口为
-`Frontend/index.html`，保留的原始设计文件为 `Frontend/code.html`；识别请求不会发送到公共远程服务。
+`Frontend/index.html`。TexTeller 本地模式不上传公式图片；选择自定义 AI 模型后，
+图片会发送到用户配置的服务接口。
 
 ## 当前功能
 
@@ -11,6 +12,36 @@
 - LaTeX 编辑、复制 LaTeX / 复制 MathML、本地历史记录
 - 设置页软件更新（tauri-plugin-updater + GitHub Releases，见 docs/UPDATING.md）
 - 设置页「识别模型」卡片动态渲染模型列表，支持下载/删除权重、打开权重目录
+- 自定义视觉 AI：配置接口、密钥、模型及提示词，获取模型列表、测试连接并切换识别引擎
+
+## 配置自定义 AI 模型
+
+1. 在设置页的「配置自定义 AI 模型」中选择接口协议，再填写地址、API Key 和模型 ID。
+   新配置默认使用 Responses API，已有 Chat Completions 配置继续使用原协议。
+   地址可为 API 根地址、`/v1` 地址，或完整的 `/responses`、`/chat/completions` 地址；远程接口
+   使用 HTTPS，本机 `localhost`、`127.0.0.1`、`::1` 服务可使用 HTTP 并留空密钥。
+   程序保留所填写的根路径，不自动补 `/v1`；服务需要 `/v1` 时请显式填写。
+2. 可点击「获取模型」，也可手填模型 ID。请选择支持图片输入、并兼容所选
+   Responses 或 Chat Completions 协议的视觉模型。
+3. 根据需要设置提示词和超时（10–300 秒）。Chat Completions 可设置温度（0–2）；
+   Responses 使用模型默认温度，温度输入框禁用，切回 Chat 后保留原值。「测试连接」会发送
+   内置公式图片，检查模型能否正确识别；测试和获取模型列表都不会保存草稿。
+4. 「保存配置」保留当前识别引擎；「保存并使用」保存后切换到自定义 AI。
+   也可在上方「识别模型」中切换回 TexTeller。自定义 AI 无需本地模型权重。
+
+DeepSeek 图片识别示例：协议选 Responses API，地址填 `https://api.deepseek.com/responses`，
+模型填 `deepseek-flash`；这是视觉 Responses 接口，无需配置 Search 工具。[官方说明](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)
+
+API Key 使用 Windows DPAPI 加密，随配置保存在当前用户的应用配置目录
+`custom-ai.json` 中，不写入浏览器存储或回显已保存的明文。密钥输入留空表示
+保留原密钥，输入新值可替换；「清除密钥」需保存后生效。更换接口服务器时需
+重新填写密钥，旧密钥不会自动发往新服务器。远程接口缺少密钥时不可选用。
+
+识别图片只会在选择自定义 AI 并执行识别时发往配置的服务；TexTeller 的公式
+识别仍由本机 worker 完成。测试会产生一次内置图片请求，可能有少量调用费用。
+Responses 请求使用 `stream: false`、`store: false`；该参数请求服务不保存响应，
+具体数据处理仍由所配置服务决定。协议实现依据 [OpenAI 图像输入文档](https://developers.openai.com/api/docs/guides/images-vision?api-mode=responses)
+和 [Responses 迁移文档](https://developers.openai.com/api/docs/guides/migrate-to-responses)，尚不代表已通过真实服务商联调。
 
 ## 开发环境
 

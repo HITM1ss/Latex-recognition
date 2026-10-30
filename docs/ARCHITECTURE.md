@@ -71,7 +71,6 @@ d:\Latex-recognition\
 ├── .github/workflows/release.yml   # 一键发版 CI（构建+签名+Release）
 ├── Frontend/
 │   ├── index.html              # ★ 全部前端 UI 与逻辑（单文件）
-│   ├── code.html               # 早期设计备份（可忽略）
 │   └── DESIGN.md               # 早期设计说明（可能过时）
 ├── docs/
 │   ├── API.md                  # IPC 协议（识别 + 命令速览）

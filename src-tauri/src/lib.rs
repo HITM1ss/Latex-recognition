@@ -1,4 +1,5 @@
 mod commands;
+mod custom_ai;
 mod state;
 mod worker;
 
@@ -13,7 +14,11 @@ pub fn run() {
             commands::list_models,
             commands::download_model,
             commands::delete_model,
-            commands::open_model_dir
+            commands::open_model_dir,
+            custom_ai::get_custom_ai_config,
+            custom_ai::save_custom_ai_config,
+            custom_ai::test_custom_ai_config,
+            custom_ai::list_custom_ai_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

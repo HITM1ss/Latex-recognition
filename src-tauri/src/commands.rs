@@ -17,13 +17,23 @@ pub struct ModelInfo {
 /// 当前可用的识别模型清单（新增模型时在此登记；模型权重就绪与否动态判定）。
 #[tauri::command]
 pub fn list_models(app: AppHandle) -> Vec<ModelInfo> {
-    vec![ModelInfo {
+    let mut models = vec![ModelInfo {
         id: "texteller".to_string(),
         label: "TexTeller 3.0".to_string(),
         description: "默认引擎，速度快，适合印刷体与清晰截图".to_string(),
         icon: "bolt".to_string(),
         ready: crate::worker::texteller_ready(&app),
-    }]
+    }];
+    if let Some((model, ready)) = crate::custom_ai::configured_model(&app) {
+        models.push(ModelInfo {
+            id: "custom-ai".to_string(),
+            label: format!("自定义 AI · {model}"),
+            description: "使用已配置的视觉 AI 接口识别，图片会发送到该接口".to_string(),
+            icon: "cloud".to_string(),
+            ready,
+        });
+    }
+    models
 }
 
 /// 下载指定模型：先确保运行环境（Python 3.11 + texteller/torch，缺失自动装），
@@ -123,6 +133,9 @@ pub async fn recognize_image(
     app: AppHandle,
     request: RecognizeRequest,
 ) -> Result<RecognizeResponse, String> {
+    if request.model.as_deref() == Some("custom-ai") {
+        return crate::custom_ai::recognize(&app, &request).await;
+    }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
