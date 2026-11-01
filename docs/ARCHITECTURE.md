@@ -5,23 +5,23 @@
 
 ## 0. 一句话概述
 
-**OpenTeX** 是一个 **完全离线的 LaTeX 公式识别桌面应用**：
+**OpenTeX** 是一个支持 **TexTeller 本地识别和自定义 AI 识别的 LaTeX 公式识别桌面应用**：
 
-- 前端 = 单个静态 HTML（原生 JS + Tailwind CDN + 原生 SVG 图标）
+- 前端 = `index.html`（页面结构）+ `styles.css`（样式和动画）+ `app.js`（Tailwind 配置与交互），使用原生 JavaScript、Tailwind CDN 和 SVG 图标
 
 - 桌面壳 = **Tauri 2 + Rust**（负责窗口、IPC、进程编排、自动更新）
 
 - 推理 = **常驻 Python worker** 进程（TexTeller 3.0 模型，CPU 推理）
 
-- 调用链：`前端 → Tauri 命令(Rust) → stdin/stdout JSONL → Python worker → TexTeller → LaTeX 原路返回`
+- 本地调用链：`前端 → Tauri 命令(Rust) → stdin/stdout JSONL → Python worker → TexTeller → LaTeX 原路返回`
 
-识别请求**不经过任何远程服务**。联网场景集中在「下载权重」一条链路上：首次点「下载权重」会先自动准备运行环境（从 python.org 静默安装 Python 3.11、pip 安装 torch CPU + texteller），再从 HuggingFace 镜像下载权重；此外只有「检查/下载软件更新」会联网。
+TexTeller 识别在本机完成；选择自定义 AI 时，Rust 会将图片发送到配置的服务接口，配置与协议见 [API.md](API.md)。下载权重、准备运行环境、软件更新及前端 CDN 资源也会使用网络。
 
 ## 1. 技术栈
 
 | 层     | 技术                                                                   | 说明                                 |
 | ----- | -------------------------------------------------------------------- | ---------------------------------- |
-| 前端    | 原生 HTML/CSS/JS + Tailwind(CDN) + KaTeX(CDN) + Material Symbols(CDN)  | 单文件 `Frontend/index.html`，无打包器、无框架 |
+| 前端    | 原生 HTML/CSS/JS + Tailwind(CDN) + KaTeX(CDN) + Material Symbols(CDN)  | `Frontend/index.html` / `styles.css` / `app.js`，无打包器、无框架 |
 | 桌面壳   | Tauri 2（Rust）/ tao / webview2                                        | 无边框窗口（自绘标题栏）                       |
 | 后端编排  | Rust commands + worker 进程管理                                          | 见 `src-tauri/src/*`                |
 | 推理    | Python 3.11 + `texteller`（TrOCR 架构）+ torch CPU                       | 常驻子进程                              |
@@ -35,7 +35,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                 OpenTeX（Windows 桌面）                    │
 │                                                             │
-│  Frontend/index.html （WebView，单文件）                      │
+│  Frontend/（WebView：index.html / styles.css / app.js）        │
 │    ├─ 标题栏（自绘）/ 侧栏导航 / 工作区 / 设置页               │
 │    ├─ renderModels()   动态模型列表（下载/删除/单选）          │
 │    ├─ recognize()      invoke("recognize_image")             │
@@ -70,7 +70,9 @@ d:\Latex-recognition\
 ├── .cargo/config.toml          # sparse rsproxy 镜像（联网受限环境可删）
 ├── .github/workflows/release.yml   # 一键发版 CI（构建+签名+Release）
 ├── Frontend/
-│   ├── index.html              # ★ 全部前端 UI 与逻辑（单文件）
+│   ├── index.html              # 页面结构与资源引用
+│   ├── styles.css              # 页面样式与动画
+│   ├── app.js                  # Tailwind 配置与全部交互逻辑
 │   └── DESIGN.md               # 早期设计说明（可能过时）
 ├── docs/
 │   ├── API.md                  # IPC 协议（识别 + 命令速览）
@@ -98,9 +100,24 @@ d:\Latex-recognition\
 
 ## 4. 各层详解
 
-### 4.1 前端（`Frontend/index.html`，单文件）
+### 4.1 前端（`Frontend/index.html` / `styles.css` / `app.js`）
 
 无构建、无框架，`window.__TAURI__`（`withGlobalTauri: true`）直连 Rust。CDN 只从网络加载 `tailwindcss / KaTeX / Material Symbols / 字体`；**完全离线包需要把这些本地化**（当前未做）。
+
+`index.html` 维护页面结构和资源引用；`styles.css` 维护自定义样式与动画；
+`app.js` 维护 Tailwind 主题配置、导航、模型配置、识别和更新等交互。
+页面先加载 Tailwind CDN，再在 head 中同步加载一次 `app.js`，立即应用主题配置，
+并注册 `DOMContentLoaded` 初始化；Tailwind 未加载时跳过主题配置。
+KaTeX 保留 `defer` 加载。导航事件、模型列表和更新卡片在 DOM 就绪后初始化。
+
+主页上传区由 HaloDropzone 组件样式适配为原生三文件实现：磨砂填充、三层主题绿色光斑、
+悬停/聚焦/拖拽时的周界流光及静态上传图标。光晕和流光范围为初始尺寸的两倍、
+周期为两倍、色彩不透明度为一半，空闲图标及其容器不执行入场或漂浮动画。上传区保持原有全宽和 124px 高度
+（122px surface 加 frame 上下各 1px），图标与文字间距适配该高度。
+CSS 通过 `@supports` 为周界路径动画提供静态主题色描边回退，
+`prefers-reduced-motion` 下停用动画。隐藏的 `fileInput` 与可点击的 `dropZone` 为同级，避免选择事件冒泡重复打开。
+拖拽使用深度计数处理装饰子节点；选择、拖放、粘贴统一进入原识别流程，处理中锁定入口，
+成功或失败取自实际读取/识别结果，不使用演示进度；结果显示 2400 ms 后恢复空闲提示。
 
 关键区块与职责：
 
@@ -109,8 +126,9 @@ d:\Latex-recognition\
 | `<header id="titlebar">` | 自绘标题栏（`decorations:false` 无系统栏），拖拽区 + 最小化/关闭                                   |                                                         |
 | `<nav>`                  | 左侧 80px 导航：工作区 / 设置 / 升级按钮（点击升级 = 切到设置页并触发检查更新）                                |                                                         |
 | `<main>` 工作区             | 拖放/粘贴图片 → 识别 → 原始图 + KaTeX 预览 + LaTeX 源码编辑 + 底部操作栏                             |                                                         |
-| `<main>` 设置页             | 「识别模型」动态卡片（`renderModels`）+ 「软件更新」卡片 + 4 张占位卡片                                           |                                                         |
-| JS 函数 `renderModels()`   | 从 `list_models` 拉模型列表动态渲染：就绪 → 单选点 + 打开权重目录/删除按钮；未就绪 → 「下载权重」按钮（实时进度/速度）            |                                                         |
+| `<main>` 设置页             | 「识别模型」动态卡片（`renderModels`）+ 「软件更新」卡片 + 「配置自定义 AI 模型」卡片 + 3 张占位卡片                                           |                                                         |
+| JS 函数 `renderModels()`   | 从 `list_models` 渲染本地模型及多个命名 AI 配置；本地条目管理权重，自定义条目的「配置」按钮按 ID 载入编辑，选择条目不填充表单            |                                                         |
+| 自定义 AI 配置表单       | 启动时端点和模型留空；新建弹窗命名并本地保存；编辑时保存修改；手填或从完整下拉列表选择模型，测试连接独立触发 | |
 | JS `recognizeDataUrl()`         | `invoke("recognize_image", {request})` → `updateLatex` → KaTeX `renderPreview` |                                                         |
 | 更新卡片 `initUpdateCard`    | 检查更新 `plugin:updater\|check` → 下载 `download_and_install`（Channel 进度）→ 静默安装重启 |
 | KaTeX                    | 识别/编辑结果去掉 `\[...\]` 后渲染；不支持的命令以红色原文回退（`throwOnError:false`）                    |                                                         |
@@ -125,14 +143,19 @@ d:\Latex-recognition\
 | `delete_model`    | `commands::delete_model`    | 停 worker → 删目录，内置模型拒绝                             |
 | `open_model_dir` | `commands::open_model_dir` | 打开权重目录（前端「打开权重文件夹」按钮），返回路径 |
 | `model_status`    | `commands::model_status`    | `"ready"`/`"cold"`（当前前端未调用）                                    |
+| `get_custom_ai_config` | `custom_ai::get_custom_ai_config` | `{profileId?}`；有 ID 加载该项，无 ID 返回空白草稿 |
+| `create_custom_ai_profile` | `custom_ai::create_custom_ai_profile` | `{name,config}`；命名并创建，不测试或自动选择 |
+| `update_custom_ai_profile` | `custom_ai::update_custom_ai_profile` | `{id,name,config}`；仅更新指定条目 |
+| `archive_custom_ai_profile` | `custom_ai::archive_custom_ai_profile` | `{id}`；完整加密配置归档至 TEMP 后移出活动列表 |
+| `test_custom_ai_config` / `list_custom_ai_models` | `custom_ai` 同名命令 | 显式请求测试/模型列表；草稿携带 `profileId` 确定密钥来源 |
 
 ### 4.2 Rust 层（`src-tauri/src/`）
 
-- **lib.rs**：挂载 `tauri_plugin_updater`，注册 6 个命令。
+- **lib.rs**：挂载 `tauri_plugin_updater`，注册基础模型命令及自定义 AI 配置命令。
 
 - **commands.rs**：
 
-  - `list_models`：当前只登记 `texteller` 一条（`ready` 由 `worker::texteller_ready` 动态判定）。**新增模型只需在这里加一条 ModelInfo**。
+  - `list_models`：返回 `texteller`（`ready` 由权重动态判定）和所有命名 AI 配置，后者 ID 为 `custom-ai:<profileId>`、显示名称来自用户命名；不测试远程可用性。
 
   - `download_model(id, on_event: Channel<DownloadProgress>)`：先 `ensure_runtime`（缺 Python 3.11 / torch / texteller 时自动安装，阶段文字同样走该 Channel），再确保 worker 存活；spawn 时把进度 Channel 传入，worker 启动阶段的 `download_progress` 消息会转发到该 Channel。
 
@@ -140,7 +163,14 @@ d:\Latex-recognition\
 
   - `open_model_dir`：打开（不存在则创建）模型权重目录并返回路径，前端「打开权重文件夹」按钮调用。
 
-  - `recognize_image`：懒拉起 worker（进程死了自动重启）→ 同步等待匹配 `id` 的响应。
+  - `recognize_image`：`custom-ai:<profileId>` 按 ID 使用该配置直接请求视觉 API；本地模型懒拉起 worker（进程死了自动重启）并等待匹配 `id` 的响应。
+
+- **custom_ai.rs**：多个命名配置存于 `app_config_dir()/custom-ai-profiles.json`，旧单配置保留原文件并迁移为 `legacy`。新建/更新只本地保存，测试单独触发；配置 ID 稳定，密钥通过 Windows DPAPI 按配置保存，空白草稿不隐式使用其他配置密钥。
+
+  - 自定义模型行的删除按钮复用 TexTeller 删除图标与 CSS 动效，但调用配置归档命令。
+    完整的加密记录和恢复说明先写入 `%TEMP%\OpenTeX\profile-archive\`，成功后才更新活动列表；
+    最后一项移除后保留空列表，旧单配置不重新迁移。当前选中项被移除时前端回退 TexTeller，
+    仅在被移除的项也是当前编辑项时清空编辑器。
 
 - **worker.rs**：
 
@@ -363,7 +393,9 @@ npx tauri build --bundles nsis
 
 | 需求           | 文件/函数                                                                                                           |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |
-| 前端全部 UI/逻辑   | `Frontend/index.html`（renderModels / recognizeDataUrl / renderPreview / initUpdateCard / 删除按钮 CSS）                         |
+| 页面结构与资源引用 | `Frontend/index.html`                                                                                              |
+| 前端样式与动画   | `Frontend/styles.css`（页面样式 / 导航动画 / 按钮动画）                                                                 |
+| 前端交互与主题配置 | `Frontend/app.js`（Tailwind 配置 / renderModels / recognizeDataUrl / renderPreview / initUpdateCard）                         |
 | IPC 命令       | `src-tauri/src/commands.rs`                                                                                     |
 | worker 进程与握手 | `src-tauri/src/worker.rs`（spawn / recognize / model\_data\_dir / ensure\_dir\_elevated / texteller\_ready）      |
 | 模型加载与下载      | `resources/formula_worker.py`（main / \_model\_root / \_download\_model / \_stream\_download / \_emit\_progress） |
@@ -375,7 +407,7 @@ npx tauri build --bundles nsis
 
 - 前端静态资源 still CDN，未本地化 → 完全离线安装包需要处理。
 
-- 模型选择只有 TexTeller；`list_models` 已设计成数组，新增模型注册一条 + 实现对应 worker 下载即可。
+- 内置本地模型目前只有 TexTeller；自定义 AI 通过 Responses / Chat Completions 接入，命令与配置见 `docs/API.md`。
 
 - worker 仍默认用用户机器 Python 3.11，但点「下载权重」会自动安装环境
   （`worker.rs::ensure_runtime`：缺 Python 3.11 就静默装官方解释器，缺

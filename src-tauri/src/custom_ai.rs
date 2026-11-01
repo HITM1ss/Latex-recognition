@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{path::PathBuf, time::{Duration, Instant}};
+use std::{collections::HashSet, io::Write, path::{Path, PathBuf}, sync::{atomic::{AtomicU64, Ordering}, Mutex}, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 use tauri::{AppHandle, Manager};
 
 use crate::worker::{RecognizeRequest, RecognizeResponse};
@@ -11,6 +11,11 @@ const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_ERROR_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_IMAGE_BYTES: usize = 12 * 1024 * 1024;
 const TEST_IMAGE: &[u8] = include_bytes!("../resources/connection-test.png");
+const PROFILE_STORE_VERSION: u32 = 1;
+const MAX_PROFILE_STORE_BYTES: usize = 4 * 1024 * 1024;
+const LEGACY_PROFILE_ID: &str = "legacy";
+static PROFILE_STORE_LOCK: Mutex<()> = Mutex::new(());
+static NEXT_PROFILE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -23,6 +28,8 @@ pub enum ApiFormat {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomAiConfigInput {
+    #[serde(default)]
+    pub profile_id: Option<String>,
     pub base_url: String,
     #[serde(default)]
     pub api_format: ApiFormat,
@@ -45,6 +52,8 @@ fn default_timeout() -> u64 { 60 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomAiConfigView {
+    pub profile_id: Option<String>,
+    pub name: String,
     pub base_url: String,
     pub api_format: ApiFormat,
     pub model: String,
@@ -54,7 +63,7 @@ pub struct CustomAiConfigView {
     pub has_api_key: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredConfig {
     base_url: String,
@@ -66,6 +75,19 @@ struct StoredConfig {
     timeout_seconds: u64,
     #[serde(default)]
     protected_api_key: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct StoredProfile {
+    id: String,
+    name: String,
+    config: StoredConfig,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ProfileStore {
+    version: u32,
+    profiles: Vec<StoredProfile>,
 }
 
 struct ResolvedConfig {
@@ -85,16 +107,43 @@ pub struct ConnectionTestResult {
     pub elapsed_ms: u64,
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_config_dir().map(|dir| dir.join("custom-ai.json"))
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileArchiveResult {
+    pub profile_id: String,
+    pub name: String,
+    pub archive_path: String,
+    pub manifest_path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ProfileArchivePayload {
+    version: u32,
+    profile: StoredProfile,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileArchiveManifest {
+    version: u32,
+    operation: String,
+    created_at_unix_ms: u64,
+    original_store_path: String,
+    profile_id: String,
+    name: String,
+    profile_file: String,
+    restore_note: String,
+}
+
+fn config_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path().app_config_dir()
         .map_err(|_| "无法定位自定义 AI 配置目录".to_string())
 }
 
-fn read_config(app: &AppHandle) -> Result<Option<StoredConfig>, String> {
-    let path = config_path(app)?;
-    match std::fs::read(&path) {
+fn read_config_file<T: serde::de::DeserializeOwned>(path: &Path, limit: usize) -> Result<Option<T>, String> {
+    match std::fs::read(path) {
         Ok(bytes) => {
-            if bytes.len() > 128 * 1024 { return Err("自定义 AI 配置文件过大".into()); }
+            if bytes.len() > limit { return Err("自定义 AI 配置文件过大".into()); }
             serde_json::from_slice(&bytes).map(Some)
                 .map_err(|_| "自定义 AI 配置文件格式有误，请检查配置文件".to_string())
         }
@@ -103,13 +152,139 @@ fn read_config(app: &AppHandle) -> Result<Option<StoredConfig>, String> {
     }
 }
 
+fn unique_id() -> String {
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let sequence = NEXT_PROFILE_ID.fetch_add(1, Ordering::Relaxed);
+    format!("p{timestamp:x}-{:x}-{sequence:x}", std::process::id())
+}
+
+fn normalized_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() { return Err("请填写配置名称".into()); }
+    if name.chars().count() > 64 { return Err("配置名称不能超过 64 个字符".into()); }
+    if name.chars().any(char::is_control) { return Err("配置名称不能包含换行或控制字符".into()); }
+    Ok(name.to_string())
+}
+
+fn unique_name(store: &ProfileStore, name: &str, editing_id: Option<&str>) -> Result<String, String> {
+    let name = normalized_name(name)?;
+    if store.profiles.iter().any(|profile| Some(profile.id.as_str()) != editing_id && profile.name.to_lowercase() == name.to_lowercase()) {
+        return Err("已存在同名配置，请使用其他名称".into());
+    }
+    Ok(name)
+}
+
+fn profile_by_id<'a>(store: &'a ProfileStore, id: &str) -> Result<&'a StoredProfile, String> {
+    store.profiles.iter().find(|profile| profile.id == id).ok_or_else(|| "找不到指定的 AI 配置，请重新选择".to_string())
+}
+
+fn write_profile_store(directory: &Path, store: &ProfileStore) -> Result<(), String> {
+    let data = serde_json::to_vec_pretty(store).map_err(|_| "无法序列化 AI 配置".to_string())?;
+    if data.len() > MAX_PROFILE_STORE_BYTES { return Err("AI 配置总大小过大".into()); }
+    std::fs::create_dir_all(directory).map_err(|_| "无法创建自定义 AI 配置目录".to_string())?;
+    let suffix = unique_id();
+    let pending = directory.join(format!("custom-ai-profiles.pending-{suffix}.json"));
+    let target = directory.join("custom-ai-profiles.json");
+    let backup = directory.join(format!("custom-ai-profiles.backup-{suffix}.json"));
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&pending)
+        .map_err(|_| "无法创建 AI 配置暂存文件".to_string())?;
+    file.write_all(&data).and_then(|_| file.sync_all())
+        .map_err(|_| "保存 AI 配置失败，原有配置已保留".to_string())?;
+    drop(file);
+    let had_previous = target.exists();
+    if had_previous {
+        std::fs::copy(&target, &backup).map_err(|_| "无法备份原有 AI 配置，未覆盖原文件".to_string())?;
+    }
+    // The complete old file stays in place until the same-directory atomic replacement.
+    if std::fs::rename(&pending, &target).is_err() {
+        return Err("保存 AI 配置失败，配置副本已保留".into());
+    }
+    Ok(())
+}
+
+fn write_new_archive_file<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let data = serde_json::to_vec_pretty(value).map_err(|_| "无法序列化 AI 配置归档，原配置未更改".to_string())?;
+    if data.len() > MAX_PROFILE_STORE_BYTES { return Err("AI 配置归档过大，原配置未更改".into()); }
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)
+        .map_err(|_| "无法创建临时归档文件，原配置未更改".to_string())?;
+    file.write_all(&data).and_then(|_| file.sync_all())
+        .map_err(|_| "无法完整保存临时归档，原配置未更改".to_string())
+}
+
+fn archive_profile(directory: &Path, archive_root: &Path, store: &mut ProfileStore, id: &str) -> Result<ProfileArchiveResult, String> {
+    let profile = profile_by_id(store, id)?.clone();
+    std::fs::create_dir_all(archive_root).map_err(|_| "无法创建临时归档目录，原配置未更改".to_string())?;
+    let archive_directory = archive_root.join(unique_id());
+    std::fs::create_dir(&archive_directory).map_err(|_| "无法创建独立归档目录，原配置未更改".to_string())?;
+    let profile_path = archive_directory.join("profile.json");
+    let manifest_path = archive_directory.join("manifest.json");
+    let payload = ProfileArchivePayload { version: PROFILE_STORE_VERSION, profile: profile.clone() };
+    write_new_archive_file(&profile_path, &payload)?;
+    let manifest = ProfileArchiveManifest {
+        version: 1,
+        operation: "archive-custom-ai-profile".into(),
+        created_at_unix_ms: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis().min(u64::MAX as u128) as u64,
+        original_store_path: directory.join("custom-ai-profiles.json").display().to_string(),
+        profile_id: profile.id.clone(), name: profile.name.clone(),
+        profile_file: profile_path.display().to_string(),
+        restore_note: "此清单记录可恢复的完整配置副本，密钥仍由原 Windows 用户加密保护。列表更新失败时原配置可能仍在。恢复前确认配置 ID 和名称均不与当前列表冲突，再将 profile.json 中的 profile 合并回原文件的 profiles 数组；不要覆盖其他配置。".into(),
+    };
+    write_new_archive_file(&manifest_path, &manifest)?;
+    let remaining = ProfileStore { version: store.version,
+        profiles: store.profiles.iter().filter(|entry| entry.id != id).cloned().collect() };
+    if let Err(error) = write_profile_store(directory, &remaining) {
+        return Err(format!("{error}；原配置仍保留，可恢复副本位于 {}", archive_directory.display()));
+    }
+    // Keep the versioned store even when empty, so legacy single-file migration cannot revive the archived profile.
+    *store = remaining;
+    Ok(ProfileArchiveResult { profile_id: profile.id, name: profile.name,
+        archive_path: archive_directory.display().to_string(), manifest_path: manifest_path.display().to_string() })
+}
+
+fn read_profile_store(directory: &Path) -> Result<ProfileStore, String> {
+    if let Some(store) = read_config_file::<ProfileStore>(&directory.join("custom-ai-profiles.json"), MAX_PROFILE_STORE_BYTES)? {
+        if store.version != PROFILE_STORE_VERSION { return Err("AI 配置文件版本暂不支持".into()); }
+        let mut ids = HashSet::new();
+        let mut names = HashSet::new();
+        for profile in &store.profiles {
+            if profile.id.is_empty() || profile.id.len() > 96 || !ids.insert(profile.id.clone()) {
+                return Err("AI 配置文件包含无效或重复的配置 ID".into());
+            }
+            let name = normalized_name(&profile.name)?;
+            if name != profile.name || !names.insert(name.to_lowercase()) { return Err("AI 配置文件包含重复名称".into()); }
+        }
+        return Ok(store);
+    }
+    let legacy = read_config_file::<StoredConfig>(&directory.join("custom-ai.json"), 128 * 1024)?;
+    let store = ProfileStore { version: PROFILE_STORE_VERSION, profiles: legacy.into_iter().map(|config| StoredProfile {
+        id: LEGACY_PROFILE_ID.to_string(), name: "默认配置".to_string(), config,
+    }).collect() };
+    if !store.profiles.is_empty() { write_profile_store(directory, &store)?; }
+    Ok(store)
+}
+
+fn with_profile_store<T>(app: &AppHandle, operation: impl FnOnce(&Path, &mut ProfileStore) -> Result<T, String>) -> Result<T, String> {
+    let _guard = PROFILE_STORE_LOCK.lock().map_err(|_| "AI 配置状态锁已损坏".to_string())?;
+    let directory = config_directory(app)?;
+    let mut store = read_profile_store(&directory)?;
+    operation(&directory, &mut store)
+}
+
 fn view(stored: &StoredConfig) -> CustomAiConfigView {
     CustomAiConfigView {
+        profile_id: None, name: String::new(),
         base_url: stored.base_url.clone(), api_format: stored.api_format, model: stored.model.clone(),
         prompt: stored.prompt.clone(), temperature: stored.temperature,
         timeout_seconds: stored.timeout_seconds,
         has_api_key: stored.protected_api_key.as_ref().is_some_and(|key| !key.is_empty()),
     }
+}
+
+fn profile_view(profile: &StoredProfile) -> CustomAiConfigView {
+    let mut result = view(&profile.config);
+    result.profile_id = Some(profile.id.clone());
+    result.name = profile.name.clone();
+    result
 }
 
 fn is_loopback(url: &reqwest::Url) -> bool {
@@ -183,46 +358,112 @@ fn resolve_config(input: CustomAiConfigInput, old: Option<&StoredConfig>, requir
 }
 
 fn input_from_stored(stored: &StoredConfig) -> CustomAiConfigInput {
-    CustomAiConfigInput { base_url: stored.base_url.clone(), api_format: stored.api_format, api_key: None, clear_api_key: false,
+    CustomAiConfigInput { profile_id: None, base_url: stored.base_url.clone(), api_format: stored.api_format, api_key: None, clear_api_key: false,
         model: stored.model.clone(), prompt: stored.prompt.clone(), temperature: stored.temperature,
         timeout_seconds: stored.timeout_seconds }
 }
 
 fn new_config_view() -> CustomAiConfigView {
-    CustomAiConfigView { base_url: String::new(), api_format: ApiFormat::Responses, model: String::new(),
+    CustomAiConfigView { profile_id: None, name: String::new(), base_url: String::new(), api_format: ApiFormat::Responses, model: String::new(),
         prompt: DEFAULT_PROMPT.to_string(), temperature: 0.0, timeout_seconds: default_timeout(), has_api_key: false }
 }
 
 #[tauri::command]
-pub fn get_custom_ai_config(app: AppHandle) -> Result<CustomAiConfigView, String> {
-    Ok(match read_config(&app)? {
-        Some(stored) => view(&stored),
-        None => new_config_view(),
+pub fn get_custom_ai_config(app: AppHandle, profile_id: Option<String>) -> Result<CustomAiConfigView, String> {
+    let Some(id) = profile_id else { return Ok(new_config_view()); };
+    with_profile_store(&app, |_, store| Ok(profile_view(profile_by_id(store, &id)?)))
+}
+
+#[tauri::command]
+pub fn list_custom_ai_profiles(app: AppHandle) -> Result<Vec<CustomAiConfigView>, String> {
+    with_profile_store(&app, |_, store| Ok(store.profiles.iter().map(profile_view).collect()))
+}
+
+fn stored_from_resolved(resolved: ResolvedConfig) -> Result<StoredConfig, String> {
+    Ok(StoredConfig {
+        base_url: resolved.base_url.to_string(), api_format: resolved.api_format, model: resolved.model,
+        prompt: resolved.prompt, temperature: resolved.temperature, timeout_seconds: resolved.timeout_seconds,
+        protected_api_key: if resolved.api_key.is_empty() { None } else { Some(protect_key(&resolved.api_key)?) },
+    })
+}
+
+fn resolve_profile_input(store: &ProfileStore, config: CustomAiConfigInput, require_model: bool) -> Result<ResolvedConfig, String> {
+    let source = config.profile_id.as_deref().map(|id| profile_by_id(store, id)).transpose()?;
+    resolve_config(config, source.map(|profile| &profile.config), require_model)
+}
+
+fn create_profile(store: &mut ProfileStore, name: &str, config: CustomAiConfigInput, forced_id: Option<&str>) -> Result<CustomAiConfigView, String> {
+    let name = unique_name(store, name, None)?;
+    // An explicitly loaded source is the only profile whose secret may be copied.
+    let resolved = resolve_profile_input(store, config, true)?;
+    let id = forced_id.map(str::to_string).unwrap_or_else(unique_id);
+    if store.profiles.iter().any(|profile| profile.id == id) { return Err("配置 ID 已存在，请重试".into()); }
+    let profile = StoredProfile { id, name, config: stored_from_resolved(resolved)? };
+    let result = profile_view(&profile);
+    store.profiles.push(profile);
+    Ok(result)
+}
+
+fn update_profile(store: &mut ProfileStore, id: &str, name: &str, config: CustomAiConfigInput) -> Result<CustomAiConfigView, String> {
+    if config.profile_id.as_deref().is_some_and(|source| source != id) {
+        return Err("当前表单来自其他配置，请重新加载要修改的配置".into());
+    }
+    let name = unique_name(store, name, Some(id))?;
+    let index = store.profiles.iter().position(|profile| profile.id == id)
+        .ok_or("找不到指定的 AI 配置，请重新选择")?;
+    let resolved = resolve_config(config, Some(&store.profiles[index].config), true)?;
+    let profile = StoredProfile { id: id.to_string(), name, config: stored_from_resolved(resolved)? };
+    let result = profile_view(&profile);
+    store.profiles[index] = profile;
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn create_custom_ai_profile(app: AppHandle, name: String, config: CustomAiConfigInput) -> Result<CustomAiConfigView, String> {
+    with_profile_store(&app, |directory, store| {
+        let result = create_profile(store, &name, config, None)?;
+        write_profile_store(directory, store)?;
+        Ok(result)
     })
 }
 
 #[tauri::command]
-pub fn save_custom_ai_config(app: AppHandle, config: CustomAiConfigInput) -> Result<CustomAiConfigView, String> {
-    let old = read_config(&app)?;
-    let resolved = resolve_config(config, old.as_ref(), true)?;
-    let stored = StoredConfig {
-        base_url: resolved.base_url.to_string(), api_format: resolved.api_format, model: resolved.model,
-        prompt: resolved.prompt, temperature: resolved.temperature, timeout_seconds: resolved.timeout_seconds,
-        protected_api_key: if resolved.api_key.is_empty() { None } else { Some(protect_key(&resolved.api_key)?) },
-    };
-    let path = config_path(&app)?;
-    let parent = path.parent().ok_or("无法定位配置目录")?;
-    std::fs::create_dir_all(parent).map_err(|_| "无法创建自定义 AI 配置目录".to_string())?;
-    let data = serde_json::to_vec_pretty(&stored).map_err(|_| "无法序列化 AI 配置".to_string())?;
-    std::fs::write(path, data).map_err(|_| "保存 AI 配置失败，请检查目录权限".to_string())?;
-    Ok(view(&stored))
+pub fn update_custom_ai_profile(app: AppHandle, id: String, name: String, config: CustomAiConfigInput) -> Result<CustomAiConfigView, String> {
+    with_profile_store(&app, |directory, store| {
+        let result = update_profile(store, &id, &name, config)?;
+        write_profile_store(directory, store)?;
+        Ok(result)
+    })
 }
 
-pub fn configured_model(app: &AppHandle) -> Option<(String, bool)> {
-    let stored = read_config(app).ok()??;
-    let url = validate_settings(&input_from_stored(&stored), true).ok()?;
-    let ready = is_loopback(&url) || stored.protected_api_key.as_ref().is_some_and(|key| !key.is_empty());
-    Some((stored.model, ready))
+#[tauri::command]
+pub fn archive_custom_ai_profile(app: AppHandle, id: String) -> Result<ProfileArchiveResult, String> {
+    let archive_root = std::env::temp_dir().join("OpenTeX").join("profile-archive");
+    with_profile_store(&app, |directory, store| archive_profile(directory, &archive_root, store, &id))
+}
+
+#[tauri::command]
+pub fn save_custom_ai_config(app: AppHandle, config: CustomAiConfigInput) -> Result<CustomAiConfigView, String> {
+    let id = config.profile_id.clone().filter(|id| !id.is_empty()).ok_or("请指定要更新的配置")?;
+    with_profile_store(&app, |directory, store| {
+        let name = profile_by_id(store, &id)?.name.clone();
+        let result = update_profile(store, &id, &name, config)?;
+        write_profile_store(directory, store)?;
+        Ok(result)
+    })
+}
+
+fn resolve_input_for_app(app: &AppHandle, config: CustomAiConfigInput, require_model: bool) -> Result<ResolvedConfig, String> {
+    if config.profile_id.is_none() { return resolve_config(config, None, require_model); }
+    with_profile_store(app, |_, store| resolve_profile_input(store, config, require_model))
+}
+
+pub fn configured_models(app: &AppHandle) -> Vec<(String, String, String, bool)> {
+    with_profile_store(app, |_, store| Ok(store.profiles.iter().filter_map(|profile| {
+        let url = validate_settings(&input_from_stored(&profile.config), true).ok()?;
+        let ready = is_loopback(&url) || profile.config.protected_api_key.as_ref().is_some_and(|key| !key.is_empty());
+        Some((format!("custom-ai:{}", profile.id), profile.name.clone(), profile.config.model.clone(), ready))
+    }).collect())).unwrap_or_default()
 }
 
 fn client(config: &ResolvedConfig) -> Result<reqwest::Client, String> {
@@ -455,8 +696,7 @@ async fn call_recognition(config: &ResolvedConfig, data_url: String) -> Result<S
 
 #[tauri::command]
 pub async fn test_custom_ai_config(app: AppHandle, config: CustomAiConfigInput) -> Result<ConnectionTestResult, String> {
-    let old = read_config(&app)?;
-    let config = resolve_config(config, old.as_ref(), true)?;
+    let config = resolve_input_for_app(&app, config, true)?;
     let start = Instant::now();
     let latex = call_recognition(&config, format!("data:image/png;base64,{}", STANDARD.encode(TEST_IMAGE))).await?;
     let canonical: String = latex.chars().filter(|character| !character.is_whitespace()).collect();
@@ -468,8 +708,7 @@ pub async fn test_custom_ai_config(app: AppHandle, config: CustomAiConfigInput) 
 
 #[tauri::command]
 pub async fn list_custom_ai_models(app: AppHandle, config: CustomAiConfigInput) -> Result<Vec<String>, String> {
-    let old = read_config(&app)?;
-    let config = resolve_config(config, old.as_ref(), false)?;
+    let config = resolve_input_for_app(&app, config, false)?;
     let endpoint = endpoint(&config.base_url, "models");
     let request = request_builder(&config, client(&config)?.get(endpoint))?;
     let data = read_json(request.send().await.map_err(network_error)?, &config.api_key).await?;
@@ -483,14 +722,24 @@ pub async fn list_custom_ai_models(app: AppHandle, config: CustomAiConfigInput) 
     Ok(models)
 }
 
+fn profile_id_for_model(model: Option<&str>) -> Result<&str, String> {
+    match model {
+        Some("custom-ai") => Ok(LEGACY_PROFILE_ID),
+        Some(model) => model.strip_prefix("custom-ai:").filter(|id| !id.is_empty())
+            .ok_or_else(|| "请选择已保存的自定义 AI 配置".to_string()),
+        None => Err("请选择已保存的自定义 AI 配置".into()),
+    }
+}
+
 pub async fn recognize(app: &AppHandle, request: &RecognizeRequest) -> Result<RecognizeResponse, String> {
-    let stored = read_config(app)?.ok_or("请先在设置中保存自定义 AI 配置")?;
+    let profile_id = profile_id_for_model(request.model.as_deref())?;
+    let stored = with_profile_store(app, |_, store| Ok(profile_by_id(store, profile_id)?.config.clone()))?;
     let config = resolve_config(input_from_stored(&stored), Some(&stored), true)?;
     let data_url = image_data_url(request)?;
     let start = Instant::now();
     let latex = call_recognition(&config, data_url).await?;
     Ok(RecognizeResponse { success: true, latex: Some(latex), confidence: None,
-        elapsed_ms: Some(start.elapsed().as_millis() as u64), engine: Some(format!("custom-ai/{}", config.model)), error: None })
+        elapsed_ms: Some(start.elapsed().as_millis() as u64), engine: Some(format!("custom-ai:{profile_id}/{}", config.model)), error: None })
 }
 
 #[cfg(windows)]
@@ -599,8 +848,264 @@ mod tests {
     }
 
     fn input(base_url: &str) -> CustomAiConfigInput {
-        CustomAiConfigInput { base_url: base_url.into(), api_format: ApiFormat::ChatCompletions, api_key: None, clear_api_key: false,
+        CustomAiConfigInput { profile_id: None, base_url: base_url.into(), api_format: ApiFormat::ChatCompletions, api_key: None, clear_api_key: false,
             model: "vision-model".into(), prompt: String::new(), temperature: 0.0, timeout_seconds: 60 }
+    }
+
+    fn empty_profile_store() -> ProfileStore {
+        ProfileStore { version: PROFILE_STORE_VERSION, profiles: Vec::new() }
+    }
+
+    fn test_profile_directory() -> PathBuf {
+        let directory = std::env::temp_dir().join(format!("opentex-profile-test-{}", unique_id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    #[test]
+    fn archiving_preserves_a_complete_target_and_changes_no_other_profile() {
+        let directory = test_profile_directory();
+        let archive_root = directory.join("temporary-archives");
+        let mut store = empty_profile_store();
+        let first_id = create_profile(&mut store, "First", input("https://first.example/v1"), None).unwrap().profile_id.unwrap();
+        let target_id = create_profile(&mut store, "Target", input("https://target.example/v1"), None).unwrap().profile_id.unwrap();
+        let last_id = create_profile(&mut store, "Last", input("https://last.example/v1"), None).unwrap().profile_id.unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let original_target = serde_json::to_value(profile_by_id(&store, &target_id).unwrap()).unwrap();
+        let original_first = serde_json::to_value(profile_by_id(&store, &first_id).unwrap()).unwrap();
+        let original_last = serde_json::to_value(profile_by_id(&store, &last_id).unwrap()).unwrap();
+        let result = archive_profile(&directory, &archive_root, &mut store, &target_id).unwrap();
+        assert_eq!(result.profile_id, target_id);
+        assert_eq!(result.name, "Target");
+        assert!(profile_by_id(&store, &target_id).is_err());
+        assert_eq!(serde_json::to_value(profile_by_id(&store, &first_id).unwrap()).unwrap(), original_first);
+        assert_eq!(serde_json::to_value(profile_by_id(&store, &last_id).unwrap()).unwrap(), original_last);
+        let reloaded = read_profile_store(&directory).unwrap();
+        assert_eq!(reloaded.profiles.len(), 2);
+        assert!(profile_by_id(&reloaded, &target_id).is_err());
+        let payload_path = Path::new(&result.archive_path).join("profile.json");
+        let payload: ProfileArchivePayload = serde_json::from_slice(&std::fs::read(&payload_path).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(payload.profile).unwrap(), original_target);
+        let manifest: ProfileArchiveManifest = serde_json::from_slice(&std::fs::read(&result.manifest_path).unwrap()).unwrap();
+        assert_eq!(manifest.profile_id, target_id);
+        assert_eq!(Path::new(&manifest.profile_file), payload_path.as_path());
+        assert!(manifest.restore_note.contains("ID 和名称"));
+        assert_eq!(Path::new(&manifest.original_store_path), directory.join("custom-ai-profiles.json").as_path());
+        let public_result = serde_json::to_value(&result).unwrap();
+        assert_eq!(public_result.as_object().unwrap().len(), 4);
+        for field in ["profileId", "name", "archivePath", "manifestPath"] { assert!(public_result.get(field).is_some()); }
+        assert!(public_result.get("config").is_none());
+    }
+
+    #[test]
+    fn unknown_profile_or_archive_preparation_failure_leaves_active_data_unchanged() {
+        let directory = test_profile_directory();
+        let archive_root = directory.join("temporary-archives");
+        let mut store = empty_profile_store();
+        let id = create_profile(&mut store, "Original", input("https://first.example/v1"), None).unwrap().profile_id.unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let target = directory.join("custom-ai-profiles.json");
+        let original_bytes = std::fs::read(&target).unwrap();
+        assert!(archive_profile(&directory, &archive_root, &mut store, "unknown-id").is_err());
+        assert!(!archive_root.exists());
+        assert_eq!(std::fs::read(&target).unwrap(), original_bytes);
+        std::fs::write(&archive_root, b"file prevents creating an archive directory").unwrap();
+        assert!(archive_profile(&directory, &archive_root, &mut store, &id).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), original_bytes);
+        assert_eq!(store.profiles.len(), 1);
+        assert_eq!(store.profiles[0].id, id);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn archive_survives_failed_active_replacement_without_losing_the_active_profile() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = test_profile_directory();
+        let archive_root = directory.join("temporary-archives");
+        let mut store = empty_profile_store();
+        let id = create_profile(&mut store, "Original", input("https://first.example/v1"), None).unwrap().profile_id.unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let target = directory.join("custom-ai-profiles.json");
+        let original_bytes = std::fs::read(&target).unwrap();
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0x1 | 0x2).open(&target).unwrap();
+        let error = archive_profile(&directory, &archive_root, &mut store, &id).err().unwrap();
+        drop(held);
+        assert!(error.contains("原配置仍保留"));
+        assert_eq!(std::fs::read(&target).unwrap(), original_bytes);
+        assert_eq!(store.profiles.len(), 1);
+        assert_eq!(read_profile_store(&directory).unwrap().profiles[0].id, id);
+        let batch = std::fs::read_dir(&archive_root).unwrap().next().unwrap().unwrap().path();
+        let payload: ProfileArchivePayload = serde_json::from_slice(&std::fs::read(batch.join("profile.json")).unwrap()).unwrap();
+        assert_eq!(payload.profile.id, id);
+        assert!(batch.join("manifest.json").is_file());
+    }
+
+    #[test]
+    fn archived_legacy_profile_does_not_reappear_and_its_name_can_be_reused() {
+        let directory = test_profile_directory();
+        let archive_root = directory.join("temporary-archives");
+        let old_json = json!({"baseUrl":"https://legacy.example/v1", "model":"legacy-model", "prompt":"",
+            "temperature":0.0, "timeoutSeconds":60});
+        let original = serde_json::to_vec(&old_json).unwrap();
+        let legacy_path = directory.join("custom-ai.json");
+        std::fs::write(&legacy_path, &original).unwrap();
+        let mut store = read_profile_store(&directory).unwrap();
+        archive_profile(&directory, &archive_root, &mut store, LEGACY_PROFILE_ID).unwrap();
+        assert!(directory.join("custom-ai-profiles.json").is_file());
+        assert!(read_profile_store(&directory).unwrap().profiles.is_empty());
+        assert_eq!(std::fs::read(&legacy_path).unwrap(), original);
+        let replacement = create_profile(&mut store, "默认配置", input("https://new.example/v1"), None).unwrap();
+        assert_ne!(replacement.profile_id.as_deref(), Some(LEGACY_PROFILE_ID));
+        write_profile_store(&directory, &store).unwrap();
+        assert!(profile_by_id(&read_profile_store(&directory).unwrap(), LEGACY_PROFILE_ID).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn archive_payload_is_recoverable_but_public_result_and_manifest_contain_no_key() {
+        let directory = test_profile_directory();
+        let archive_root = directory.join("temporary-archives");
+        let mut store = empty_profile_store();
+        let mut config = input("https://first.example/v1"); config.api_key = Some("synthetic-archive-secret".into());
+        let id = create_profile(&mut store, "Encrypted", config, None).unwrap().profile_id.unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let result = archive_profile(&directory, &archive_root, &mut store, &id).unwrap();
+        let profile_bytes = std::fs::read(Path::new(&result.archive_path).join("profile.json")).unwrap();
+        let payload: ProfileArchivePayload = serde_json::from_slice(&profile_bytes).unwrap();
+        let protected = payload.profile.config.protected_api_key.unwrap();
+        assert_eq!(unprotect_key(&protected).unwrap(), "synthetic-archive-secret");
+        assert!(!String::from_utf8(profile_bytes).unwrap().contains("synthetic-archive-secret"));
+        for text in [serde_json::to_string(&result).unwrap(), std::fs::read_to_string(&result.manifest_path).unwrap()] {
+            assert!(!text.contains("synthetic-archive-secret"));
+            assert!(!text.contains(&protected));
+            assert!(!text.contains("protectedApiKey"));
+        }
+    }
+
+    #[test]
+    fn named_profiles_save_locally_and_update_only_the_selected_stable_id() {
+        let mut store = empty_profile_store();
+        let first = create_profile(&mut store, "  Alpha  ", input("http://127.0.0.1:1"), None).unwrap();
+        let second = create_profile(&mut store, "Beta", input("https://other.example/v1"), None).unwrap();
+        let first_id = first.profile_id.unwrap();
+        let second_id = second.profile_id.unwrap();
+        assert_ne!(first_id, second_id);
+        assert_eq!(first.name, "Alpha");
+        assert!(!second.has_api_key, "untested remote configurations may be saved without keys");
+        let mut changed = input("http://127.0.0.1:1");
+        changed.profile_id = Some(first_id.clone()); changed.model = "updated-model".into();
+        let updated = update_profile(&mut store, &first_id, "Alpha updated", changed).unwrap();
+        assert_eq!(updated.profile_id.as_deref(), Some(first_id.as_str()));
+        assert_eq!(profile_by_id(&store, &second_id).unwrap().name, "Beta");
+        assert_eq!(profile_by_id(&store, &second_id).unwrap().config.model, "vision-model");
+        let directory = test_profile_directory();
+        write_profile_store(&directory, &store).unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let reloaded = read_profile_store(&directory).unwrap();
+        assert_eq!(reloaded.profiles.len(), 2);
+        assert_eq!(profile_by_id(&reloaded, &first_id).unwrap().config.model, "updated-model");
+        assert!(std::fs::read_dir(&directory).unwrap().any(|entry| entry.unwrap().file_name().to_string_lossy().starts_with("custom-ai-profiles.backup-")));
+        assert_eq!(profile_id_for_model(Some("custom-ai")).unwrap(), "legacy");
+        assert_eq!(profile_id_for_model(Some(&format!("custom-ai:{second_id}"))).unwrap(), second_id);
+        assert!(profile_id_for_model(Some("custom-ai:")).is_err());
+    }
+
+    #[test]
+    fn legacy_storage_migrates_once_and_preserves_the_original_file() {
+        let directory = test_profile_directory();
+        let old_json = json!({"baseUrl":"https://legacy.example/v1", "model":"legacy-model", "prompt":"",
+            "temperature":0.0, "timeoutSeconds":60});
+        let original = serde_json::to_vec(&old_json).unwrap();
+        let legacy_path = directory.join("custom-ai.json");
+        std::fs::write(&legacy_path, &original).unwrap();
+        let migrated = read_profile_store(&directory).unwrap();
+        assert_eq!(migrated.version, PROFILE_STORE_VERSION);
+        assert_eq!(migrated.profiles.len(), 1);
+        assert_eq!(migrated.profiles[0].id, LEGACY_PROFILE_ID);
+        assert_eq!(migrated.profiles[0].name, "默认配置");
+        assert_eq!(migrated.profiles[0].config.api_format, ApiFormat::ChatCompletions);
+        assert!(directory.join("custom-ai-profiles.json").is_file());
+        assert_eq!(std::fs::read(&legacy_path).unwrap(), original);
+        assert_eq!(read_profile_store(&directory).unwrap().profiles.len(), 1);
+        assert_eq!(new_config_view().profile_id, None);
+        assert!(new_config_view().name.is_empty());
+        assert!(!new_config_view().has_api_key);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_atomic_replacement_preserves_the_entire_previous_profile_store() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = test_profile_directory();
+        let mut store = empty_profile_store();
+        create_profile(&mut store, "Original", input("https://first.example/v1"), None).unwrap();
+        write_profile_store(&directory, &store).unwrap();
+        let target = directory.join("custom-ai-profiles.json");
+        let original_bytes = std::fs::read(&target).unwrap();
+        // Permit reading/copying while denying replacement of the existing file.
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0x1 | 0x2).open(&target).unwrap();
+        create_profile(&mut store, "New uncommitted", input("https://second.example/v1"), None).unwrap();
+        assert!(write_profile_store(&directory, &store).is_err());
+        drop(held);
+        assert_eq!(std::fs::read(&target).unwrap(), original_bytes);
+        let loaded = read_profile_store(&directory).unwrap();
+        assert_eq!(loaded.profiles.len(), 1);
+        assert_eq!(loaded.profiles[0].name, "Original");
+        let backup = std::fs::read_dir(&directory).unwrap().map(|entry| entry.unwrap().path())
+            .find(|path| path.file_name().unwrap().to_string_lossy().starts_with("custom-ai-profiles.backup-")).unwrap();
+        assert_eq!(std::fs::read(backup).unwrap(), original_bytes);
+    }
+
+    #[test]
+    fn names_and_unknown_or_mismatched_profile_ids_are_rejected_without_fallback() {
+        let mut store = empty_profile_store();
+        let first = create_profile(&mut store, "Alpha", input("https://first.example/v1"), None).unwrap();
+        let id = first.profile_id.unwrap();
+        assert!(create_profile(&mut store, " alpha ", input("https://first.example/v1"), None).is_err());
+        for name in ["", "  ", "line\nbreak", &"名".repeat(65)] { assert!(normalized_name(name).is_err()); }
+        assert!(normalized_name(&"名".repeat(64)).is_ok());
+        let mut unknown = input("https://first.example/v1"); unknown.profile_id = Some("missing".into());
+        assert!(resolve_profile_input(&store, unknown.clone(), true).is_err());
+        assert!(create_profile(&mut store, "Missing source", unknown, None).is_err());
+        let mut mismatched = input("https://first.example/v1"); mismatched.profile_id = Some("other-id".into());
+        assert!(update_profile(&mut store, &id, "Alpha", mismatched).is_err());
+        assert_eq!(store.profiles.len(), 1);
+        assert_eq!(profile_by_id(&store, &id).unwrap().name, "Alpha");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn profile_keys_stay_isolated_and_explicit_same_origin_clones_are_independent() {
+        let mut store = empty_profile_store();
+        let mut a = input("https://same.example/v1"); a.api_key = Some("synthetic-key-alpha".into());
+        let mut b = input("https://same.example/v1"); b.api_key = Some("synthetic-key-beta".into());
+        let a_id = create_profile(&mut store, "Alpha", a, None).unwrap().profile_id.unwrap();
+        let b_id = create_profile(&mut store, "Beta", b, None).unwrap().profile_id.unwrap();
+        assert!(resolve_profile_input(&store, input("https://same.example/v1"), true).unwrap().api_key.is_empty());
+        let mut source = input("https://same.example/v1/responses"); source.profile_id = Some(a_id.clone());
+        assert_eq!(resolve_profile_input(&store, source.clone(), true).unwrap().api_key, "synthetic-key-alpha");
+        let clone = create_profile(&mut store, "Alpha copy", source.clone(), None).unwrap();
+        let clone_id = clone.profile_id.unwrap();
+        assert_ne!(clone_id, a_id);
+        assert_eq!(unprotect_key(profile_by_id(&store, &clone_id).unwrap().config.protected_api_key.as_deref().unwrap()).unwrap(), "synthetic-key-alpha");
+        source.profile_id = Some(b_id.clone());
+        assert_eq!(resolve_profile_input(&store, source, true).unwrap().api_key, "synthetic-key-beta");
+        let mut changed_origin = input("https://different.example/v1"); changed_origin.profile_id = Some(a_id.clone());
+        assert!(create_profile(&mut store, "Wrong origin", changed_origin.clone(), None).is_err());
+        changed_origin.api_key = Some("synthetic-replacement".into());
+        assert!(create_profile(&mut store, "Explicit new key", changed_origin, None).is_ok());
+        let mut clear = input("https://same.example/v1"); clear.profile_id = Some(a_id.clone()); clear.clear_api_key = true;
+        update_profile(&mut store, &a_id, "Alpha", clear).unwrap();
+        assert!(profile_by_id(&store, &a_id).unwrap().config.protected_api_key.is_none());
+        assert_eq!(unprotect_key(profile_by_id(&store, &clone_id).unwrap().config.protected_api_key.as_deref().unwrap()).unwrap(), "synthetic-key-alpha");
+        assert_eq!(unprotect_key(profile_by_id(&store, &b_id).unwrap().config.protected_api_key.as_deref().unwrap()).unwrap(), "synthetic-key-beta");
+        let directory = test_profile_directory(); write_profile_store(&directory, &store).unwrap();
+        let persisted = String::from_utf8(std::fs::read(directory.join("custom-ai-profiles.json")).unwrap()).unwrap();
+        assert!(!persisted.contains("synthetic-key-alpha"));
+        assert!(!persisted.contains("synthetic-key-beta"));
+        let public_view = serde_json::to_string(&profile_view(profile_by_id(&store, &b_id).unwrap())).unwrap();
+        assert!(!public_view.contains("protectedApiKey"));
+        assert!(!public_view.contains("synthetic-key-beta"));
     }
 
     #[test]

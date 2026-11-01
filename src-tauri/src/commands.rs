@@ -24,11 +24,11 @@ pub fn list_models(app: AppHandle) -> Vec<ModelInfo> {
         icon: "bolt".to_string(),
         ready: crate::worker::texteller_ready(&app),
     }];
-    if let Some((model, ready)) = crate::custom_ai::configured_model(&app) {
+    for (id, name, model, ready) in crate::custom_ai::configured_models(&app) {
         models.push(ModelInfo {
-            id: "custom-ai".to_string(),
-            label: format!("自定义 AI · {model}"),
-            description: "使用已配置的视觉 AI 接口识别，图片会发送到该接口".to_string(),
+            id,
+            label: name,
+            description: format!("{model} · 图片会发送到该配置的 AI 接口"),
             icon: "cloud".to_string(),
             ready,
         });
@@ -133,7 +133,7 @@ pub async fn recognize_image(
     app: AppHandle,
     request: RecognizeRequest,
 ) -> Result<RecognizeResponse, String> {
-    if request.model.as_deref() == Some("custom-ai") {
+    if request.model.as_deref().is_some_and(|model| model == "custom-ai" || model.starts_with("custom-ai:")) {
         return crate::custom_ai::recognize(&app, &request).await;
     }
     let app = app.clone();

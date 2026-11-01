@@ -1,7 +1,7 @@
 # Recognition IPC
 
 前端通过 Tauri `invoke(...)` 调用 Rust。`texteller` 使用 stdin/stdout JSONL 与
-常驻 Python worker 通信；`custom-ai` 则由 Rust 向已配置的视觉 AI 接口发起请求，
+常驻 Python worker 通信；`custom-ai:<配置 ID>` 则由 Rust 向该项配置的视觉 AI 接口发起请求，
 不启动本地推理 worker。
 
 ## recognize_image
@@ -20,9 +20,12 @@
 或带 `data:` 前缀的 Data URL。`model` 从 `list_models` 返回的模型 id 中选择：
 
 - `texteller`：在本机识别，不向 AI 服务发送图片。
-- `custom-ai`：读取已保存配置，调用兼容所选 Responses 或 Chat Completions 协议的视觉接口，
+- `custom-ai:<配置 ID>`：按 ID 读取对应配置，调用兼容所选 Responses 或 Chat Completions 协议的视觉接口，
   将图片以 Data URL 形式发送；支持 PNG、JPEG、WebP、GIF、BMP，
   原始图片不超过 12 MB。未知 `model` 值仍沿用现有本地 TexTeller 路由。
+
+旧 `custom-ai` ID 兼容指向迁移后的 `legacy` 配置；前端将旧选择迁移为 `custom-ai:legacy`。
+配置 ID 稳定且与显示名称分离，识别时不通过名称或表单草稿选择配置。
 
 自定义 AI 由配置字段 `apiFormat` 选择协议，模型需要支持对应协议和图片输入：
 
@@ -81,7 +84,7 @@ TexTeller 未暴露校准后的置信度输出，因此 `confidence` 暂时为 `
 
 | invoke | 参数 | 返回 / 行为 |
 | --- | --- | --- |
-| `list_models` | 无 | `ModelInfo[]`：`{id,label,description,icon,ready}`；本地模型按权重判定 `ready`，保存有效自定义配置后增加 `custom-ai`；远程配置缺密钥时 `ready: false`，本机免鉴权接口允许无密钥 |
+| `list_models` | 无 | `ModelInfo[]`：`{id,label,description,icon,ready}`；本地模型按权重判定 `ready`；每项命名配置生成 `custom-ai:<id>`，`label` 为配置名称；远程配置缺密钥时 `ready: false`，本机免鉴权接口允许无密钥；就绪判定不发送网络请求 |
 | `download_model` | `{id, onEvent: Channel}` | 阻塞到就绪并返回 `"ready"`。先 `ensure_runtime`（缺 Python 3.11 / torch / texteller 时自动安装），再拉起 worker。`onEvent` 收到 `{stage}`（环境准备阶段文字）或 `{total, downloaded, speedBps, filename}`（权重下载进度，camelCase 序列化） |
 | `delete_model` | `{id}` | 停 worker → 删权重目录，返回 `"deleted"`；目录不存在返回 `"nothing_to_delete"`；随包内置模型拒绝删除 |
 | `open_model_dir` | 无 | 打开（不存在则创建）权重目录并返回目录路径字符串 |
@@ -93,6 +96,7 @@ TexTeller 未暴露校准后的置信度输出，因此 `confidence` 暂时为 `
 
 ```json
 {
+  "profileId": null,
   "apiFormat": "responses",
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "",
@@ -105,27 +109,40 @@ TexTeller 未暴露校准后的置信度输出，因此 `confidence` 暂时为 `
 ```
 
 `apiFormat` 取 `responses` 或 `chat-completions`。全新配置默认 `responses`；
-旧存档缺少该字段时按 `chat-completions` 读取，前端也保留此兼容回退，不自动迁移旧配置。
+旧存档缺少该字段时按 `chat-completions` 读取，迁移旧配置保留原协议。
 测试、保存、获取模型列表均传递当前草稿的 `apiFormat`。
 
 `temperature` 范围为 0–2，作为数值保留在配置中；Responses 不发送该参数，
-前端禁用温度输入并标明使用模型默认值，切回 Chat 后恢复原值。
+前端禁用温度输入，切回 Chat 后恢复原值。
 `timeoutSeconds` 为 10–300 的整数；`prompt` 留空
 使用默认提示词。获取模型列表时可省略 `model`，保存和测试时必须提供。
-`apiKey` 省略或为空表示保留已保存密钥，`clearApiKey: true` 表示清除，不能
+明确指定来源配置时，`apiKey` 省略或为空表示保留该项已保存密钥；空白草稿则没有密钥。
+`clearApiKey: true` 表示清除，不能
 同时传入新密钥。更换 URL origin 时不能复用旧密钥，需重新输入或明确清除。
 
 | invoke | 参数 | 返回 / 行为 |
 | --- | --- | --- |
-| `get_custom_ai_config` | 无 | 配置视图 `{apiFormat,baseUrl,model,prompt,temperature,timeoutSeconds,hasApiKey}`；不返回密钥 |
-| `save_custom_ai_config` | `{config}` | 校验、持久化并返回配置视图；不执行网络请求，保存草稿不代表连接测试成功 |
+| `get_custom_ai_config` | `{profileId?}` | 无 ID 返回空白默认配置；有 ID 读取对应项。视图 `{profileId,name,apiFormat,baseUrl,model,prompt,temperature,timeoutSeconds,hasApiKey}`，不返回密钥 |
+| `list_custom_ai_profiles` | 无 | 所有命名配置的视图数组，不返回密钥 |
+| `create_custom_ai_profile` | `{name,config}` | 本地校验并创建独立 ID，返回配置视图；名称去首尾空白后必填，最多 64 字符，大小写不敏感唯一；不测试、不选择识别模型 |
+| `update_custom_ai_profile` | `{id,name,config}` | 更新指定 ID，返回配置视图；不修改其他配置，不执行网络请求 |
+| `archive_custom_ai_profile` | `{id}` | 先在本机临时目录归档完整加密配置，再从活动列表移除；返回 `{profileId,name,archivePath,manifestPath}`，不返回密钥或配置正文，不执行网络请求 |
+| `save_custom_ai_config` | `{config}` | 旧 IPC 兼容入口，要求明确 `config.profileId`；新前端使用独立的 create / update 命令 |
 | `test_custom_ai_config` | `{config}` | 使用草稿调用视觉接口，内置图片公式 `x + 1 = 2` 正确识别后返回 `{message,elapsedMs}`；不保存草稿 |
 | `list_custom_ai_models` | `{config}` | 对对应 API 根路径执行 `GET /models`，返回去重排序的模型 ID 字符串数组；不保存草稿，列表不保证全部模型支持视觉 |
 
-配置写入 Tauri `app_config_dir()/custom-ai.json`，API Key 通过 Windows DPAPI
-绑定当前用户加密保存，前端仅获取 `hasApiKey`。远程地址要求 HTTPS 并提供密钥；
+配置写入 Tauri `app_config_dir()/custom-ai-profiles.json`，首次读取时将旧 `custom-ai.json`
+迁移为 `legacy` / 「默认配置」并保留旧文件。API Key 通过 Windows DPAPI
+绑定当前用户加密保存，前端仅获取 `hasApiKey`。`profileId` 明确指定密钥来源：
+测试、获取模型、更新及基于已载入配置的新建只可复用该项在相同 origin 的密钥；
+空白草稿不复用任何配置的密钥。远程地址要求 HTTPS 并提供密钥；
 本机回环 HTTP 接口可免鉴权。不跟随重定向，避免密钥被转发到其他服务。
 选择自定义 AI 后的识别请求会传输公式图片；本地 TexTeller 模式不通过此链路。
+
+归档目录为 `%TEMP%\OpenTeX\profile-archive\<批次>`，含 `profile.json` 和
+`manifest.json`。归档与活动列表更新使用同一配置锁，先完整写入并同步归档，再原子更新活动文件；
+任一步失败都保留原活动文件或恢复副本。即使最后一条配置被移除，也保留版本化的空活动列表，
+避免旧 `custom-ai.json` 再次迁移。恢复前须确认当前列表中不存在相同 ID 或名称。
 
 ## Worker protocol
 
